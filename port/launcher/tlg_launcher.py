@@ -95,6 +95,18 @@ TEXT = {
                            'and try again).',
                            '{size} liberados, mas {count} arquivo(s) não puderam ser apagados (em uso? Feche o '
                            'jogo e tente de novo).'),
+    'mods': ('Mods / Cheats…', 'Mods / Cheats…'),
+    'mods_title': ('Mods / Cheats', 'Mods / Cheats'),
+    'mods_hint': ('Drop shadPS4/GoldHEN cheat XML files in the mods folder, then turn them on here. '
+                  'Nothing here changes the game until you enable it.',
+                  'Solte arquivos de cheat XML no formato shadPS4/GoldHEN na pasta de mods e ligue aqui. '
+                  'Nada muda no jogo até você ativar.'),
+    'mods_warning': ('A cheat can crash the game or behave oddly; if that happens, turn it off here.',
+                     'Um cheat pode travar o jogo ou se comportar de forma estranha; se isso acontecer, desligue aqui.'),
+    'mods_folder': ('Open mods folder', 'Abrir pasta de mods'),
+    'mods_refresh': ('Refresh list', 'Atualizar lista'),
+    'mods_empty': ('No cheat XML files found in the mods folder yet.',
+                   'Nenhum arquivo de cheat XML encontrado na pasta de mods ainda.'),
     'quit': ('Quit', 'Sair'),
     'ready': ('Ready to play.', 'Pronto para jogar.'),
     'audio_native': ('Audio: native (console module found).', 'Áudio: nativo (módulo do console encontrado).'),
@@ -112,10 +124,17 @@ TEXT = {
     'port_by': ('PC port by HayatoG', 'Port para PC por HayatoG'),
     'channel': ('YouTube channel: @hayatog-dev', 'Canal no YouTube: @hayatog-dev'),
     'discord': ('Discord community', 'Comunidade no Discord'),
+    'sponsor': ('♥ Sponsor on GitHub', '♥ Apoie no GitHub'),
 }
 CHANNEL_URL = 'https://www.youtube.com/@hayatog-dev'
 DISCORD_URL = 'https://discord.gg/UMkdMYZh9g'
-GAME_LANGUAGE_NAMES = {'en': 'English', 'pt_BR': 'Português (Brasil)', 'es_LA': 'Español (Latinoamérica)',
+SPONSOR_URL = 'https://github.com/sponsors/HayatoG'
+GAME_LANGUAGE_NAMES = {'en': 'English', 'fr': 'Français', 'es_ES': 'Español (España)',
+                       'de': 'Deutsch', 'it': 'Italiano', 'nl': 'Nederlands',
+                       'pt_PT': 'Português (Portugal)', 'ru': 'Русский', 'fi': 'Suomi',
+                       'sv': 'Svenska', 'da': 'Dansk', 'no': 'Norsk', 'pl': 'Polski',
+                       'tr': 'Türkçe', 'ar': 'العربية',
+                       'pt_BR': 'Português (Brasil)', 'es_LA': 'Español (Latinoamérica)',
                        'fr_CA': 'Français (Canada)'}
 UI_LANGUAGES = ['auto', 'pt_BR', 'en_US']
 UI_LANGUAGE_NAMES = {'pt_BR': 'Português (Brasil)', 'en_US': 'English (US)'}
@@ -226,7 +245,7 @@ class Launcher:
         credits = ttk.Frame(header)
         credits.pack(side='right', anchor='ne')
         ttk.Label(credits, text=self.t('port_by'), foreground='#777').pack(anchor='e')
-        for key, url in (('channel', CHANNEL_URL), ('discord', DISCORD_URL)):
+        for key, url in (('channel', CHANNEL_URL), ('discord', DISCORD_URL), ('sponsor', SPONSOR_URL)):
             link = ttk.Label(credits, text=self.t(key), foreground='#2a6fdb', cursor='hand2',
                              font=('TkDefaultFont', 10, 'underline'))
             link.pack(anchor='e')
@@ -274,7 +293,8 @@ class Launcher:
         lang = ttk.LabelFrame(middle, text=self.t('language'), padding=8)
         lang.grid(sticky='ew', pady=(0, 8))
         lang.columnconfigure(1, weight=1)
-        self.combo(lang, 0, 'game_language', list(tlg_run.GAME_LANGUAGES), lambda k: GAME_LANGUAGE_NAMES[k])
+        self.game_lang_box = None
+        self.build_game_language(lang)
         self.combo(lang, 1, 'ui_language', UI_LANGUAGES,
                    lambda k: self.t('auto') if k == 'auto' else UI_LANGUAGE_NAMES[k], on_change=self.build)
         video = ttk.LabelFrame(middle, text=self.t('video'), padding=8)
@@ -312,6 +332,7 @@ class Launcher:
         self.play_button = ttk.Button(buttons, text=self.t('play'), style='Play.TButton', command=self.play)
         self.play_button.pack(side='right', ipadx=30, ipady=8)
         ttk.Button(buttons, text=self.t('logs'), command=lambda: self.open(tlg_run.LOG_DIR)).pack(side='right', padx=6)
+        ttk.Button(buttons, text=self.t('mods'), command=self.mods_dialog).pack(side='right', padx=6)
         ttk.Button(buttons, text=self.t('saves'), command=lambda: self.open(tlg_run.USER_DIR / 'savedata')).pack(side='right')
         self.cache_button = ttk.Button(buttons, text=self.t('clear_cache'), command=self.clear_cache)
         self.cache_button.pack(side='right', padx=(0, 6))
@@ -398,6 +419,38 @@ class Launcher:
         box.bind('<<ComboboxSelected>>', picked)
         return box
 
+    # -- game language (depends on the loaded CUSA) ---------------------------------------------
+    def build_game_language(self, parent):
+        """Game language: the ones the loaded CUSA ships (by its title id), US by default."""
+        ttk.Label(parent, text=self.t('game_language')).grid(row=0, column=0, sticky='w')
+        self.game_lang_box = ttk.Combobox(parent, state='readonly', width=28)
+        self.game_lang_box.grid(row=0, column=1, sticky='w', padx=6, pady=2)
+        self.game_lang_box.bind('<<ComboboxSelected>>', self.picked_language)
+        self.refresh_language_choices()
+
+    def picked_language(self, _=None):
+        values = self.game_lang_values
+        self.settings['game_language'] = values[self.game_lang_box.current()]
+        tlg_run.save_settings(self.settings)
+        self.refresh_status()
+
+    def refresh_language_choices(self):
+        """Reload the combo for the game folder: another CUSA ships another set of languages."""
+        if getattr(self, 'game_lang_box', None) is None:
+            return
+        values = list(tlg_run.game_languages(self.settings.get('game_dir')))
+        self.game_lang_values = values
+        self.game_lang_box.configure(values=[GAME_LANGUAGE_NAMES.get(v, v) for v in values])
+        current = self.settings.get('game_language')
+        if current not in values:
+            current = tlg_run.default_language(self.settings.get('game_dir'))
+        if current not in values:
+            current = values[0]
+        self.game_lang_box.current(values.index(current))
+        if current != self.settings.get('game_language'):
+            self.settings['game_language'] = current
+            tlg_run.save_settings(self.settings)
+
     def remap_dialog(self):
         """PS4 button -> keys and mouse buttons (tlg.ini key_map through tlg_run.launch)."""
         if getattr(self, 'remap_window', None) and self.remap_window.winfo_exists():
@@ -477,6 +530,63 @@ class Launcher:
         ttk.Button(bottom, text=self.t('close'), command=close).pack(side='right')
         win.protocol('WM_DELETE_WINDOW', close)
 
+    def mods_dialog(self):
+        """Mods/cheats (shadPS4/GoldHEN XML in tlg_run.mods_dir()); toggles write mods.json
+        through tlg_run.set_mod_enabled. Nothing here is on unless the player turns it on."""
+        if getattr(self, 'mods_window', None) and self.mods_window.winfo_exists():
+            self.mods_window.lift()
+            return
+        win = self.mods_window = tk.Toplevel(self.root)
+        win.title(self.t('mods_title'))
+        win.transient(self.root)
+        win.minsize(560, 360)
+        frame = ttk.Frame(win, padding=12)
+        frame.pack(fill='both', expand=True)
+        ttk.Label(frame, text=self.t('mods_hint'), wraplength=520, justify='left').pack(anchor='w')
+        ttk.Label(frame, text=self.t('mods_warning'), foreground='#a33', wraplength=520, justify='left').pack(
+            anchor='w', pady=(4, 8))
+
+        list_frame = ttk.Frame(frame)
+        list_frame.pack(fill='both', expand=True)
+        canvas = tk.Canvas(list_frame, highlightthickness=0)
+        scroll = ttk.Scrollbar(list_frame, orient='vertical', command=canvas.yview)
+        rows = ttk.Frame(canvas)
+        rows.bind('<Configure>', lambda _: canvas.configure(scrollregion=canvas.bbox('all')))
+        canvas.create_window((0, 0), window=rows, anchor='nw')
+        canvas.configure(yscrollcommand=scroll.set)
+        canvas.pack(side='left', fill='both', expand=True)
+        scroll.pack(side='right', fill='y')
+
+        def toggle(key, var):
+            tlg_run.set_mod_enabled(key, var.get())
+
+        def populate():
+            for child in rows.winfo_children():
+                child.destroy()
+            try:
+                mods = tlg_run.list_mods(self.settings)
+            except Exception as error:  # a malformed XML file is reported, never crashes the launcher
+                mods = []
+                ttk.Label(rows, text=str(error), foreground='#a33').pack(anchor='w')
+            if not mods:
+                ttk.Label(rows, text=self.t('mods_empty'), foreground='#777').pack(anchor='w', pady=8)
+            for key, name, note, enabled in mods:
+                row = ttk.Frame(rows)
+                row.pack(fill='x', anchor='w', pady=2)
+                var = tk.BooleanVar(value=enabled)
+                ttk.Checkbutton(row, text=name or key, variable=var,
+                                command=lambda k=key, v=var: toggle(k, v)).pack(anchor='w')
+                if note:
+                    ttk.Label(row, text=note, foreground='#777', wraplength=480, justify='left').pack(
+                        anchor='w', padx=(22, 0))
+        populate()
+
+        bottom = ttk.Frame(frame)
+        bottom.pack(fill='x', pady=(10, 0))
+        ttk.Button(bottom, text=self.t('mods_folder'), command=lambda: self.open(tlg_run.mods_dir())).pack(side='left')
+        ttk.Button(bottom, text=self.t('mods_refresh'), command=populate).pack(side='left', padx=6)
+        ttk.Button(bottom, text=self.t('close'), command=win.destroy).pack(side='right')
+
     def check(self, parent, row, key):
         var = tk.BooleanVar(value=bool(self.settings[key]))
         self.vars[key] = var
@@ -491,6 +601,7 @@ class Launcher:
             except tk.TclError:
                 pass  # spinbox while typing
         tlg_run.save_settings(self.settings)
+        self.refresh_language_choices()
         self.refresh_status()
 
     def refresh_status(self):

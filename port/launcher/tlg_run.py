@@ -24,19 +24,42 @@ import shader_cache
 # A packaged build (PyInstaller) keeps its folders next to the executable: scripts/, out/, user/.
 FROZEN = bool(getattr(sys, 'frozen', False))
 PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PORT_DIR / 'scripts'))
+import mod_patches  # noqa: E402
 REPO_DIR = PORT_DIR.parent
-# Writeable dirs (out/, user/): a read-only mount (an AppImage, a sandboxed package) has nowhere
-# to write under PORT_DIR, so TLG_DATA_DIR moves them to a writable root; the shipped binaries
-# (the probe and its libraries) stay under PORT_DIR/out.
+# Writeable dirs (out/, user/): a read-only mount (the Linux AppImage, a sandboxed package) has
+# nowhere to write under PORT_DIR, so TLG_DATA_DIR moves them to a writable root; the shipped
+# binaries and libraries stay in the package (PORT_OUT_DIR).
 DATA_DIR = Path(os.environ['TLG_DATA_DIR']) if os.environ.get('TLG_DATA_DIR') else PORT_DIR
 OUT_DIR = DATA_DIR / 'out'
 USER_DIR = DATA_DIR / 'user'
+PORT_OUT_DIR = PORT_DIR / 'out'
+MODS_DIR = USER_DIR / 'mods'          # shadPS4/GoldHEN cheat XML files the player drops in
+MODS_CONFIG = USER_DIR / 'mods.json'  # {"enabled": [...], "disabled": [...]}
 LOG_DIR = OUT_DIR / 'logs'
-PROBE = PORT_DIR / 'out' / ('tlg-probe.exe' if os.name == 'nt' else 'tlg-probe')
+PROBE = PORT_OUT_DIR / ('tlg-probe.exe' if os.name == 'nt' else 'tlg-probe')
 KEEP_LOGS = 30
 
-# Game language: PS4 system language ids the game ships voice/text archives for.
-GAME_LANGUAGES = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22}
+# Game language: the engine's own ids (NOT the PS4 system ones), looked up through
+# sceSystemServiceParamGetInt(LANG). Each CUSA ships a subset of them; an id it does not ship
+# falls back to English (1). Tables swept from the loaded trico_<lang>.psarc.
+LANGUAGES_US = {'en': 1, 'pt_BR': 17, 'es_LA': 20, 'fr_CA': 22}
+LANGUAGES_EU = {'en': 1, 'fr': 2, 'es_ES': 3, 'de': 4, 'it': 5, 'nl': 6, 'pt_PT': 7, 'ru': 8,
+                'fi': 12, 'sv': 13, 'da': 14, 'no': 15, 'pl': 16, 'tr': 19, 'ar': 21}
+LANGUAGES_BY_TITLE = {'CUSA03627': LANGUAGES_US, 'CUSA03745': LANGUAGES_EU}
+DEFAULT_LANGUAGE_BY_TITLE = {'CUSA03627': 'es_LA', 'CUSA03745': 'es_ES'}
+
+
+def game_languages(game_dir=''):
+    """The language table (engine ids) the CUSA in game_dir ships; the US one when it is unknown."""
+    title = shader_cache.title_id(game_dir) if game_dir else None
+    return LANGUAGES_BY_TITLE.get(title, LANGUAGES_US)
+
+
+def default_language(game_dir=''):
+    """The game language the launcher starts with for the CUSA in game_dir (US by default)."""
+    title = shader_cache.title_id(game_dir) if game_dir else None
+    return DEFAULT_LANGUAGE_BY_TITLE.get(title, 'es_LA')
 
 # TLG defaults (see README "Opções" and the reasons in each comment).
 DEFAULT_ENV = {
@@ -267,9 +290,45 @@ def frame_rate(settings):
     return os.environ.get('TLG_FPS') or str(settings.get('frame_rate', '30'))
 
 
+def mods_dir():
+    """TLG_MODS_DIR, else USER_DIR/mods (created empty on first use so the player sees where
+    to drop shadPS4/GoldHEN cheat XML files)."""
+    directory = Path(os.environ.get('TLG_MODS_DIR') or MODS_DIR)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def mods_config():
+    return Path(os.environ.get('TLG_MODS_CONFIG') or MODS_CONFIG)
+
+
+def list_mods(settings):
+    """[(key, name, note, enabled)] for the Mods tab: every shadPS4/GoldHEN cheat XML found in
+    the mods folder for this game's version, with its current enabled state (the file's own
+    isEnabled, unless mods.json overrides it). An untouched mods folder lists nothing selected."""
+    from tlg_patches import TITLE_IDS
+    app_version = mod_patches.game_app_version(settings['game_dir'])
+    found = mod_patches.external_patches(mods_dir(), app_version, TITLE_IDS)
+    selected = {key for key, _, _ in mod_patches.external_selection(found, mods_config())}
+    return [(key, meta.get('Name'), meta.get('Note', ''), key in selected) for key, _, meta in found]
+
+
+def set_mod_enabled(key, enabled):
+    """Updates mods.json: moves key into enabled/disabled, out of the other list."""
+    path = mods_config()
+    try:
+        data = json.loads(path.read_text()) if path.is_file() else {}
+    except (OSError, ValueError):
+        data = {}
+    on, off = set(data.get('enabled', [])), set(data.get('disabled', []))
+    (on if enabled else off).add(key)
+    (off if enabled else on).discard(key)
+    path.write_text(json.dumps({'enabled': sorted(on), 'disabled': sorted(off)}, indent=2))
+
+
 def prepare(settings, log=print):
-    """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate patches);
-    returns the module list that was linked."""
+    """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate patches and
+    any enabled mod); returns the module list that was linked."""
     global applied_frame_rate
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
@@ -281,7 +340,8 @@ def prepare(settings, log=print):
         [*python_command(scripts / 'prepare.py'), game, '--out', str(OUT_DIR)],
         [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
         [*python_command(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
-        [*python_command(scripts / 'tlg_patches.py'), game, '--out', str(OUT_DIR), '--mode', frame_rate(settings)],
+        [*python_command(scripts / 'tlg_patches.py'), game, '--out', str(OUT_DIR), '--mode', frame_rate(settings),
+         '--mods-dir', str(mods_dir()), '--mods-config', str(mods_config())],
     ]
     for step in steps:
         result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True,
@@ -306,7 +366,7 @@ def cpu_missing_sets(log=print):
     that lacks a set nothing can rewrite (AVX and older) stops here (exit 20) with the probe's reason.
     The probe gets the same library path as the game (out/lib in the Linux package)."""
     env = os.environ.copy()
-    bundled = PORT_DIR / 'out' / 'lib'
+    bundled = PORT_OUT_DIR / 'lib'
     if os.name != 'nt' and bundled.is_dir():
         env['LD_LIBRARY_PATH'] = os.pathsep.join(filter(None, [str(bundled), os.environ.get('LD_LIBRARY_PATH')]))
     try:
@@ -380,7 +440,8 @@ def build_env(settings, extra=None):
     for key, value in DEFAULT_ENV.items():
         env.setdefault(key, value)  # explicit TLG_* in the environment always win
     env['TLG_GC_BUDGET_MB'] = os.environ.get('TLG_GC_BUDGET_MB', str(int(settings['vram_budget_mb'])))
-    env['TLG_LANGUAGE'] = os.environ.get('TLG_LANGUAGE', str(GAME_LANGUAGES.get(settings['game_language'], 1)))
+    env['TLG_LANGUAGE'] = os.environ.get('TLG_LANGUAGE', str(
+        game_languages(settings.get('game_dir')).get(settings['game_language'], 1)))
     if settings.get('ui_language', 'auto') != 'auto':
         env['TLG_UI_LANG'] = settings['ui_language']
     # Without the console module the port's own mixer (runtime_ngs2.c) plays the audio.
@@ -399,8 +460,9 @@ def build_env(settings, extra=None):
         env.setdefault('TLG_VBLANK_HZ', '0')
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
-    # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib.
-    bundled = OUT_DIR / 'lib'
+    # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib, part
+    # of the package (PORT_OUT_DIR), not the writable out/ from TLG_DATA_DIR.
+    bundled = PORT_OUT_DIR / 'lib'
     if os.name != 'nt' and bundled.is_dir():
         env['LD_LIBRARY_PATH'] = os.pathsep.join(filter(None, [str(bundled), os.environ.get('LD_LIBRARY_PATH')]))
     # Shaders and pipelines beside the saves (the GPU reads it when it starts; before, Linux used

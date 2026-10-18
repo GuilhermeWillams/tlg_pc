@@ -9,9 +9,11 @@
   <a href="https://discord.gg/UMkdMYZh9g">Discord</a>
 </p>
 
+<p align="center"><a href="https://github.com/sponsors/HayatoG"><img src="https://img.shields.io/badge/Sponsor-HayatoG-ea4aaa?logo=githubsponsors&logoColor=white" alt="Sponsor HayatoG on GitHub"></a></p>
+
 <p align="center"><a href="https://github.com/HayatoG/tlg_pc/actions/workflows/build.yml"><img src="https://github.com/HayatoG/tlg_pc/actions/workflows/build.yml/badge.svg" alt="Build"></a></p>
 
-**The Last Guardian** (PS4, CUSA03627, update 01.03) rodando no PC com imagem, som, controle, mouse e teclado e saves, a 30 FPS estáveis (60 FPS e FPS livre opcionais, experimentais) e sem emulador de CPU. O código original do jogo roda nativo no processador. O sistema do PS4 é reimplementado, e a GPU é traduzida para Vulkan.
+**The Last Guardian** (PS4, CUSA03627 US / CUSA03745 UE, update 01.03) rodando no PC com imagem, som, controle, mouse e teclado e saves, a 30 FPS estáveis (60 FPS e FPS livre opcionais, experimentais) e sem emulador de CPU. O código original do jogo roda nativo no processador. O sistema do PS4 é reimplementado, e a GPU é traduzida para Vulkan.
 
 > **Nenhum arquivo do jogo vem com este projeto.** Para jogar, você precisa da sua própria cópia, tirada do seu PS4.
 
@@ -64,7 +66,7 @@ A [**última versão**](https://github.com/HayatoG/tlg_pc/releases/latest) é ge
 
 ## Arquivos do jogo necessários
 
-Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use **The Last Guardian CUSA03627 (EUA) com o update 01.03**, montado numa pasta só, com o jogo base e o update por cima. São ~25 GB.
+Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use **The Last Guardian CUSA03627 (EUA) ou CUSA03745 (UE), com o update 01.03**, montado numa pasta só, com o jogo base e o update por cima. São ~25 GB.
 
 | Arquivo | Vem de | Tamanho | Para quê |
 |---|---|---|---|
@@ -76,10 +78,12 @@ Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use *
 | `trico_enu.psarc` / `trico_ptb.psarc` / `trico_esl.psarc` / `trico_frc.psarc` (+ os `…p.psarc` do update) | base + update | ~280 MB cada | vozes e textos: inglês, português, espanhol, francês |
 | `sce_discmap.plt`, `sce_discmap_patch.plt` | base, update | pequenos | mapa de arquivos (recomendado) |
 
+O **CUSA03745 (UE)** traz 15 idiomas, no lugar dos quatro do CUSA03627: inglês, francês, espanhol (Espanha), alemão, italiano, holandês, português (Portugal), russo, finlandês, sueco, dinamarquês, norueguês, polonês, turco e árabe. O launcher lista os idiomas do CUSA que estiver carregado.
+
 **Do firmware do console (opcional, para ter som):** `libSceNgs2.sprx` (372 KB), de `/system/common/lib/` do seu PS4. Ele vai na pasta `system_lib/` ao lado do executável.
 
 **Como montar a pasta:**
-1. No Itemzflow, faça o dump do jogo (`CUSA03627`) e do update (`CUSA03627-patch`) para um pendrive exFAT.
+1. No Itemzflow, faça o dump do jogo (`CUSA03627` ou `CUSA03745`) e do update (`CUSA03627-patch` ou `CUSA03745-patch`) para um pendrive exFAT.
 2. No PC, copie a pasta do jogo base e depois copie o conteúdo do update **por cima**, substituindo os arquivos (`eboot.bin`, `sce_module/`, `sce_sys/`).
 3. Confira os tamanhos. Arquivos acima de 4 GB vindos pelo FTP do GoldHEN 2.2 chegam cortados, então use o pendrive.
 
@@ -90,11 +94,13 @@ A lista completa, que também vai nas notas de cada Release, está em [`docs/ARQ
 ## Como jogar
 
 1. Extraia o pacote e coloque o `libSceNgs2.sprx` na pasta `system_lib/`.
-2. Abra o **The Last Guardian**, escolha a pasta do jogo e o idioma (inglês, português, espanhol ou francês) e, se quiser, a taxa de quadros e os filtros de imagem. Clique em **Jogar**.
+2. Abra o **The Last Guardian**, escolha a pasta do jogo e o idioma (o CUSA03627 tem inglês, português, espanhol e francês; o CUSA03745 tem 15) e, se quiser, a taxa de quadros e os filtros de imagem. Clique em **Jogar**.
 3. No jogo, **F10** liga o contador de FPS, e **Insert** (ou R3 + L2 no controle) abre o menu do port.
 4. Controle (PS4/PS5, Xbox) ou teclado e mouse: o mouse gira a câmera, **Esc** solta o mouse e um clique prende de novo. O layout e o remapeamento estão no [`README-player.md`](port/packaging/README-player.md) e na caixa **Controles** do launcher.
 
 O passo a passo completo, com os problemas mais comuns, está em [`README-player.md`](port/packaging/README-player.md), que também vem dentro do pacote.
+
+**Mods e cheats.** O botão **Mods / Cheats…** do launcher abre a pasta `user/mods/` e lista os arquivos de cheat em XML (formato shadPS4/GoldHEN) que você soltar lá; nenhum tem efeito até você ligar na lista (ou `isEnabled="true"` no próprio arquivo). Um cheat escrito para outra versão do jogo é ignorado sozinho, sem travar os demais.
 
 **Processadores sem MOVBE, BMI1 ou LZCNT** (Intel anteriores ao Haswell): o código do jogo usa essas instruções (1941 pontos no eboot 1.03 com a libc e o Fios2; nenhuma SSE4A). Nesses processadores o port troca essas instruções por uma emulação na partida (precisa do `iced-x86`, que já vem nos pacotes). `TLG_ISA_REWRITE=1` força a emulação de todos os conjuntos (teste), uma lista como `TLG_ISA_REWRITE=movbe,bmi1` força só esses e `TLG_ISA_REWRITE=0` desliga. O log mostra `ISA: CPU lacks ...` ou `ISA: forced rewrite of N sites`.
 
@@ -138,7 +144,7 @@ Este projeto não tem vínculo com a Sony Interactive Entertainment, a SIE Japan
 
 # The Last Guardian — native PC port
 
-**The Last Guardian** (PS4, CUSA03627, update 01.03) running on PC with graphics, audio, controller, mouse and keyboard and saves, at a steady 30 FPS (optional, experimental 60 FPS and unlocked modes) and without a CPU emulator. The game's original code runs natively on the processor. The PS4 system is reimplemented, and the GPU is translated to Vulkan.
+**The Last Guardian** (PS4, CUSA03627 US / CUSA03745 EU, update 01.03) running on PC with graphics, audio, controller, mouse and keyboard and saves, at a steady 30 FPS (optional, experimental 60 FPS and unlocked modes) and without a CPU emulator. The game's original code runs natively on the processor. The PS4 system is reimplemented, and the GPU is translated to Vulkan.
 
 > **No game files come with this project.** To play, you need your own copy, dumped from your own PS4.
 
@@ -182,7 +188,7 @@ The [**latest release**](https://github.com/HayatoG/tlg_pc/releases/latest) is b
 
 ## Required game files
 
-Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in the download. Use **The Last Guardian CUSA03627 (US) with update 01.03**, merged into one folder, with the base game and the update on top. About 25 GB.
+Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in the download. Use **The Last Guardian CUSA03627 (US) or CUSA03745 (EU), with update 01.03**, merged into one folder, with the base game and the update on top. About 25 GB.
 
 | File | From | Size | Purpose |
 |---|---|---|---|
@@ -194,10 +200,12 @@ Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in t
 | `trico_enu.psarc` / `trico_ptb.psarc` / `trico_esl.psarc` / `trico_frc.psarc` (+ the update's `…p.psarc`) | base + update | ~280 MB each | voices and text: English, Portuguese, Spanish, French |
 | `sce_discmap.plt`, `sce_discmap_patch.plt` | base, update | small | file map (recommended) |
 
+**CUSA03745 (EU)** ships 15 languages instead of CUSA03627's four: English, French, Spanish (Spain), German, Italian, Dutch, Portuguese (Portugal), Russian, Finnish, Swedish, Danish, Norwegian, Polish, Turkish and Arabic. The launcher lists the languages of the loaded CUSA.
+
 **From the console firmware (optional, for audio):** `libSceNgs2.sprx` (372 KB), from `/system/common/lib/` on your PS4. It goes in the `system_lib/` folder next to the executable.
 
 **How to build the folder:**
-1. In Itemzflow, dump the game (`CUSA03627`) and the update (`CUSA03627-patch`) to an exFAT USB drive.
+1. In Itemzflow, dump the game (`CUSA03627` or `CUSA03745`) and the update (`CUSA03627-patch` or `CUSA03745-patch`) to an exFAT USB drive.
 2. On the PC, copy the base game folder, then copy the update's contents **over it**, replacing files (`eboot.bin`, `sce_module/`, `sce_sys/`).
 3. Check the sizes. Files over 4 GB sent through GoldHEN 2.2's FTP arrive truncated, so use the USB drive.
 
@@ -208,11 +216,13 @@ The full list, which also goes in the notes of every Release, is in [`docs/ARQUI
 ## How to play
 
 1. Extract the package and put `libSceNgs2.sprx` in the `system_lib/` folder.
-2. Open **The Last Guardian**, pick the game folder, the language (English, Portuguese, Spanish or French) and, if you like, the frame rate and image filters. Click **Play**.
+2. Open **The Last Guardian**, pick the game folder and the language (CUSA03627 has English, Portuguese, Spanish and French; CUSA03745 has 15) and, if you like, the frame rate and image filters. Click **Play**.
 3. In game, **F10** toggles the FPS counter, and **Insert** (or R3 + L2 on a controller) opens the port's menu.
 4. Controller (PS4/PS5, Xbox) or keyboard and mouse: the mouse turns the camera, **Esc** releases the mouse and a click takes it back. The layout and remapping are in [`README-player.md`](port/packaging/README-player.md) and in the launcher's **Controls** box.
 
 The full guide, with common problems, is in [`README-player.md`](port/packaging/README-player.md), which also ships inside the package.
+
+**Mods and cheats.** The launcher's **Mods / Cheats…** button opens the `user/mods/` folder and lists any cheat XML files (shadPS4/GoldHEN format) you drop there; nothing has any effect until you turn it on in the list (or the file's own `isEnabled="true"`). A cheat written for another game version is skipped on its own, without affecting the others.
 
 **CPUs without MOVBE, BMI1 or LZCNT** (Intel before Haswell): the game's code uses those instructions (1941 sites in the 1.03 eboot with its libc and Fios2; no SSE4A). On those CPUs the port replaces them with an emulation at start (needs `iced-x86`, included in the packages). `TLG_ISA_REWRITE=1` forces the emulation of every set (testing), a list such as `TLG_ISA_REWRITE=movbe,bmi1` forces only those and `TLG_ISA_REWRITE=0` turns it off. The log shows `ISA: CPU lacks ...` or `ISA: forced rewrite of N sites`.
 
