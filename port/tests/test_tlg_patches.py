@@ -103,7 +103,8 @@ def resolution_elf(expected=True):
                                (t.HOR_PLUS_BLOCK, t.HOR_PLUS_BLOCK_EXPECTED),
                                (t.UI_SIZE, t.UI_SIZE_EXPECTED),
                                (t.GUIDE_SCALE, t.GUIDE_SCALE_EXPECTED),
-                               (t.SUBTITLE_SCALE, t.SUBTITLE_SCALE_EXPECTED)):
+                               (t.SUBTITLE_SCALE, t.SUBTITLE_SCALE_EXPECTED),
+                               (t.GARLIC_SIZE, t.GARLIC_SIZE_EXPECTED)):
         offset = address - t.GHIDRA_BASE
         image[offset:offset + len(original)] = original if expected else b'\xcc' * len(original)
     return plain_elf(image)
@@ -116,10 +117,17 @@ class ResolutionPatchTests(unittest.TestCase):
         for value in (None, '', '1920x1080', 'native', '0x1080', '70000x1080'):
             self.assertIsNone(t.parse_resolution(value))
 
-    def test_16_9_only_changes_the_mode(self):
+    def test_16_9_changes_only_the_mode(self):
         writes = t.resolution_writes(resolution_elf(), (2560, 1440))
         self.assertEqual(len(writes), 1)
         self.assertEqual(writes[0][1][:8], struct.pack('<4H', 2560, 1440, 2560, 1440))
+
+    def test_gpu_heap(self):
+        (offset, data, _), = t.garlic_writes(resolution_elf())
+        self.assertEqual(offset, t.GARLIC_SIZE - t.GHIDRA_BASE)
+        self.assertEqual(data, bytes.fromhex('41bf') + struct.pack('<I', (2816 + t.GARLIC_EXTRA_MB) << 20))
+        with self.assertRaises(ValueError):
+            t.garlic_writes(resolution_elf(expected=False))
 
     def test_ultrawide_gets_hor_plus_and_a_wider_ui(self):
         writes = t.resolution_writes(resolution_elf(), (3840, 1600))

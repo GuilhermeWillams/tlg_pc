@@ -197,6 +197,15 @@ GUIDE_SCALE_EXPECTED = struct.pack('<4f', 1 / 1920, 1 / 1080, -32, 16 / 1920)
 # there) stretched the subtitle lines sideways on a wider canvas.
 SUBTITLE_SCALE = 0x24f1464
 SUBTITLE_SCALE_EXPECTED = struct.pack('<2f', 1 / 1920, 1 / 1080)
+# Garlic (GPU) heap: the render setup (0x1dd3a46) allocates 0xb0000000 bytes (2816 MiB; the Pro
+# path adds 512 MiB) for the game's own allocator (Gomalloc), render targets included. A large
+# stage at 1080p already uses most of it, so it always gets 4064 MiB: headroom for larger frames
+# and supersampling. The launcher grows the direct memory (TLG_DMEM_MB) by the same amount.
+# mov r15d, imm32 caps it below 4 GiB; 32 MiB stay free in case the allocator rounds sizes up
+# in 32 bits.
+GARLIC_SIZE = 0x1dd3a46
+GARLIC_SIZE_EXPECTED = bytes.fromhex('41bf000000b0')
+GARLIC_EXTRA_MB = 1248
 
 
 def checked_offset(eboot, address, expected):
@@ -237,6 +246,14 @@ def resolution_writes(eboot, size):
         writes.append((subtitle, struct.pack('<2f', 1 / ui_width, 1 / 1080),
                        f'UI: {SUBTITLE_SCALE:#x} subtitle scale 1920 -> {ui_width}'))
     return writes
+
+
+def garlic_writes(eboot):
+    """[(image offset, new bytes, description)] of the larger GPU heap, after checking it."""
+    garlic = checked_offset(eboot, GARLIC_SIZE, GARLIC_SIZE_EXPECTED)
+    size_mb = 2816 + GARLIC_EXTRA_MB
+    return [(garlic, GARLIC_SIZE_EXPECTED[:2] + struct.pack('<I', size_mb << 20),
+             f'garlic: {GARLIC_SIZE:#x} GPU heap 2816 -> {size_mb} MB')]
 
 
 def write_patch_file(path, writes):
@@ -340,7 +357,14 @@ def prepare(game_dir, out_dir, mode, mods_dir=None, mods_config=None, resolution
             lines.append(f'Resolution: {error}: not applied, 1920x1080')
         for _, data, what in res_writes:
             lines.append(f'Resolution patch {what} ({data.hex()})')
-    writes = fps_writes + mod_writes + res_writes
+    heap = []
+    try:
+        heap = garlic_writes(read_eboot_elf(game_dir))
+    except (OSError, ValueError) as error:
+        lines.append(f'GPU heap: {error}: not applied, 2816 MB')
+    for _, data, what in heap:
+        lines.append(f'Patch {what} ({data.hex()})')
+    writes = fps_writes + mod_writes + res_writes + heap
     write_patch_file(Path(out_dir) / 'patches.bin', writes)
     lines.append(f'Frame rate: {mode} FPS mode, {len(writes)} patch writes')
     return mode, lines
