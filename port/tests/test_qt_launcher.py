@@ -86,6 +86,12 @@ class RunTests(unittest.TestCase):
             eu = {'game_dir': '/eu'}
             self.assertEqual('pt_PT', tlg_run.resolve_game_language(dict(eu, game_language='auto'), {'LANG': 'pt_BR'}))
             self.assertIn('de', tlg_run.game_language_choices(eu))
+        with mock.patch.object(tlg_run.shader_cache, 'title_id', return_value='CUSA04936'):
+            kr = {'game_dir': '/kr'}   # #46: Korean disc
+            self.assertEqual(['auto', 'en', 'ko', 'zh_TW', 'zh_CN'], tlg_run.game_language_choices(kr))
+            self.assertEqual('ko', tlg_run.resolve_game_language(dict(kr, game_language='auto'), {'LANG': 'ko_KR.UTF-8'}))
+            self.assertEqual('zh_TW', tlg_run.resolve_game_language(dict(kr, game_language='auto'), {'LANG': 'zh_TW.UTF-8'}))
+            self.assertEqual(9, tlg_run.game_languages('/kr')['ko'])
 
     def test_build_env_hands_the_launcher_choices_to_the_game(self):
         settings = dict(tlg_run.DEFAULT_SETTINGS, game_dir='', game_language='pt_BR', gpu_readbacks='0',
