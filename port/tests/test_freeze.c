@@ -175,6 +175,15 @@ static void cond_and_sema(void) {
     assert(!pthread_join(thread, NULL));
 }
 
+/* A wait on a mutex the caller does not hold fails with EPERM and leaves the mutex free
+ * (the host wait used to return holding a mutex the guest never unlocks; iss_pc #637). */
+static void cond_wait_unowned(void) {
+    void *m = NULL, *c = NULL;
+    assert(mutex_init(&m, NULL, "unowned") == 0 && cond_init(&c, NULL, "unowned") == 0);
+    assert(cond_wait(&c, &m) == (int32_t)0x80020001);
+    assert(mutex_lock(&m) == 0 && mutex_unlock(&m) == 0);
+}
+
 int main(void) {
     runtime_start(1);
     runtime_thread_attach_main();
@@ -194,6 +203,7 @@ int main(void) {
     slot_levels();
     contended_mutex();
     cond_and_sema();
+    cond_wait_unowned();
     puts("freeze report tests passed");
     return 0;
 }
