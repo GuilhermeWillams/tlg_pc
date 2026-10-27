@@ -1,6 +1,8 @@
 {
   "game_language_label": {"en": "Game language", "pt": "Idioma do jogo"},
   "game_language_auto": {"en": "Automatic (system language)", "pt": "Automático (idioma do sistema)"},
+  "game_language_japanese_fallback": {"en": "Experimental Japanese text from embedded EU 1.03 assets. French archives stay on disk and are hidden only from this launch. Full-game audio/text coverage is not yet verified.", "pt": "Texto japonês experimental dos arquivos europeus 1.03. Os arquivos franceses ficam no disco e são ocultados apenas nesta execução. A cobertura de áudio/texto do jogo inteiro ainda não foi verificada."},
+  "game_language_japanese_unavailable": {"en": "Japanese text fallback requires EU CUSA03745 update 01.03 and both boot archives. This game folder will use English instead. This does not add Japanese-region disc support.", "pt": "O texto japonês exige CUSA03745 europeu com atualização 01.03 e os dois arquivos boot. Esta pasta usará inglês. Isso não adiciona suporte à edição japonesa do disco."},
   "game_language_now": {"en": "Automatic: {name}", "pt": "Automático: {name}"},
   "game_language_hint": {"en": "Applies on the next start. Works if your game files have that language.", "pt": "Vale na próxima partida. Funciona se os arquivos do seu jogo tiverem esse idioma."},
   "nav_play": {"en": "Play", "pt": "Jogar"},

@@ -625,6 +625,10 @@ class Backend(QObject):
     @Property(str, notify=gameLanguageChanged)
     def gameLanguageNow(self):
         """'Automatic: Português (Brasil)' while 'auto' is active, else empty."""
+        if self.settings.get('game_language') == 'ja':
+            return self.t_('game_language_japanese_fallback' if
+                           tlg_run.japanese_fallback_available(self.settings.get('game_dir')) else
+                           'game_language_japanese_unavailable')
         if self.settings.get('game_language', 'auto') in tlg_run.GAME_LANGUAGES:
             return ''
         return self.t_('game_language_now', name=logic.GAME_LANGUAGE_NAMES[tlg_run.resolve_game_language(self.settings)])
