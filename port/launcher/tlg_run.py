@@ -32,8 +32,15 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 import mod_patches  # noqa: E402
 REPO_DIR = PORT_DIR.parent
-OUT_DIR = PORT_DIR / 'out'
-
+# Writeable dirs (out/, user/): a read-only mount (the Linux AppImage, a sandboxed package) has
+# nowhere to write under PORT_DIR, so TLG_DATA_DIR moves them to a writable root; the shipped
+# binaries and libraries stay in the package (PORT_OUT_DIR).
+DATA_DIR = Path(os.environ['TLG_DATA_DIR']) if os.environ.get('TLG_DATA_DIR') else PORT_DIR
+OUT_DIR = DATA_DIR / 'out'
+USER_DIR = DATA_DIR / 'user'
+PORT_OUT_DIR = PORT_DIR / 'out'
+MODS_DIR = USER_DIR / 'mods'          # shadPS4/GoldHEN cheat XML files the player drops in
+MODS_CONFIG = USER_DIR / 'mods.json'  # {"enabled": [...], "disabled": [...]}
 
 def user_dir():
     """The folder of saves, tlg.ini, mods, backups and GPU caches: TLG_USER_DIR, else the per-user
@@ -47,9 +54,8 @@ def __getattr__(name):  # USER_DIR (the Tk launcher, older code) is the current 
         return user_dir()
     raise AttributeError(name)
 
-
 LOG_DIR = OUT_DIR / 'logs'
-PROBE = OUT_DIR / ('tlg-probe.exe' if os.name == 'nt' else 'tlg-probe')
+PROBE = PORT_OUT_DIR / ('tlg-probe.exe' if os.name == 'nt' else 'tlg-probe')
 KEEP_LOGS = 30
 
 # Game language: the engine's own ids (NOT the PS4 system ones), looked up through
