@@ -71,6 +71,12 @@ class Controls(QObject):
         rows = [self._row('c:stick_deadzone', self.t('deadzone'), self.t('deadzone_hint'), 'slider', False,
                           zone != tlg_run.DEFAULT_SETTINGS['stick_deadzone'], lo=0, hi=40, step=1, unit='%',
                           value=zone, valueText=f'{zone}%')]
+        choice = self.settings.get('menu_confirm', 'cross')
+        rows.append(self._row('c:menu_confirm', self.t('ctl_menu_confirm'), self.t('ctl_menu_confirm_hint'),
+                              'combo', False, choice != 'cross',
+                              options=[{'value': 'cross', 'label': 'Cross (X / A)'},
+                                       {'value': 'circle', 'label': 'Circle (O / B)'}],
+                              index=int(choice == 'circle')))
         return rows
 
     def _mouse_rows(self):
@@ -103,6 +109,10 @@ class Controls(QObject):
         s = self.settings
         if rid == 'c:stick_deadzone':
             s['stick_deadzone'] = min(max(int(float(value)), 0), 40)
+            tlg_run.save_settings(s)
+        elif rid == 'c:menu_confirm':
+            s['menu_confirm'] = 'circle' if value == 'circle' else 'cross'
+            backports_table.write_ini(self.ini_path(), {'menu_confirm': s['menu_confirm']})
             tlg_run.save_settings(s)
         elif rid.startswith('m:'):
             key = rid[2:]
