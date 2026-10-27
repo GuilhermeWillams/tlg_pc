@@ -151,8 +151,8 @@ DEFAULT_ENV = {
     'TLG_READBACKS': '2',          # the game reads GPU compute results on the CPU (AsyncMap)
     'TLG_READBACK_LINEAR': '1',    # small/linear render targets back to the CPU: auto exposure (#38, #40)
     'TLG_GC_BUDGET_MB': '5600',    # texture cache budget for 6 GB of VRAM
-    'TLG_UPSCALER': 'off',         # native image: GoW3's temporal upscalers made it shake
-    'TLG_JITTER': '0',
+    'TLG_UPSCALER': 'dlss',        # only as DLAA on the game's motion vectors (tlg.ini dlaa=1)
+    'TLG_JITTER': '1',             # jitter only while DLAA runs (needs tlg_dlss.dll + NVIDIA RTX)
     'TLG_OBJECT_MOTION': '0',
     'TLG_FRAME_STATS': '1',        # FPS in the log every 5 s (scripts/watch_session.sh heartbeat)
 }
@@ -190,6 +190,8 @@ RESOLUTIONS = ['1280x720', '1920x1080', '2560x1440', '3840x2160',
 applied_frame_rate = '30'
 # MiB the Garlic heap patch added to the game's GPU heap (0: none); the direct memory grows with it.
 applied_garlic_extra = 0
+# The size the resolution patch really applied (None: the game's own 1920x1080).
+applied_resolution = None
 
 # Keyboard and mouse defaults of src/runtime_pad.c, in its key_map syntax ('|': several).
 DEFAULT_KEYS = {
@@ -484,8 +486,9 @@ def set_mod_enabled(key, enabled):
 def prepare(settings, log=print):
     """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate patches and
     any enabled mod); returns the module list that was linked."""
-    global applied_frame_rate, applied_garlic_extra
+    global applied_frame_rate, applied_garlic_extra, applied_resolution
     applied_garlic_extra = 0
+    applied_resolution = None
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
@@ -512,6 +515,8 @@ def prepare(settings, log=print):
             if line.startswith('Patch garlic: '):
                 words = line.split()  # '... GPU heap 2816 -> N MB (bytes)'
                 applied_garlic_extra = int(words[-3]) - int(words[-5])
+            if line.startswith('Resolution patch resolution: '):
+                applied_resolution = line.split()[-2]  # '... 1920x1080 -> WxH (bytes)'
     isa_table(log)
     return modules
 
@@ -637,6 +642,9 @@ def build_env(settings, extra=None):
     # The larger Garlic heap comes out of direct memory (runtime_memory.c: 5056 MiB retail).
     if applied_garlic_extra:
         env.setdefault('TLG_DMEM_MB', str(5056 + applied_garlic_extra))
+    # The game renders natively at the patched size: the upscaler stays off (vk_temporal_upscaler).
+    if applied_resolution:
+        env['TLG_RESOLUTION_PATCH'] = applied_resolution
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib, never the
