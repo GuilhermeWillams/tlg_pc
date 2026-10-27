@@ -30,7 +30,7 @@ GAME_LANGUAGE_NAMES = {'en': 'English', 'en_GB': 'English (UK)', 'pt_BR': 'Portu
                        'fr_CA': 'Français (Canada)', 'fr': 'Français', 'de': 'Deutsch', 'it': 'Italiano',
                        'nl': 'Nederlands', 'pl': 'Polski', 'tr': 'Türkçe', 'ru': 'Русский', 'cs': 'Čeština',
                        'hu': 'Magyar', 'el': 'Ελληνικά', 'ro': 'Română', 'fi': 'Suomi', 'sv': 'Svenska', 'da': 'Dansk',
-                       'no': 'Norsk', 'ar': 'العربية', 'ja': '日本語', 'ko': '한국어', 'zh_TW': '繁體中文',
+                       'no': 'Norsk', 'ar': 'العربية', 'ja': tlg_run.JAPANESE_FALLBACK_LABEL, 'ko': '한국어', 'zh_TW': '繁體中文',
                        'zh_CN': '简体中文', 'th': 'ไทย', 'vi': 'Tiếng Việt', 'id': 'Bahasa Indonesia'}
 
 
