@@ -482,6 +482,8 @@
   "readbacks_1": {"en": "Relaxed", "pt": "Intermediário"},
   "readbacks_2": {"en": "Precise (recommended)", "pt": "Preciso (recomendado)"},
   "deadzone": {"en": "Stick dead zone", "pt": "Zona morta dos analógicos"},
+  "ctl_menu_confirm": {"en": "Menu confirm button", "pt": "Botão de confirmação dos menus"},
+  "ctl_menu_confirm_hint": {"en": "Cross or Circle to confirm; the other button goes back. Applies on next launch, without changing gameplay buttons. Game menus currently require the verified EU 1.03 executable.", "pt": "Cross ou Circle para confirmar; o outro botão volta. Aplicado na próxima inicialização, sem alterar os botões de jogo. Os menus do jogo exigem o executável europeu 1.03 verificado."},
   "deadzone_hint": {"en": "Raise it if the boy or the camera moves on its own (stick drift).", "pt": "Aumente se o garoto ou a câmera se mexer sozinho (drift)."},
   "exp_live": {"en": "in game", "pt": "no jogo"},
   "exp_restart": {"en": "next start", "pt": "na próxima partida"},
