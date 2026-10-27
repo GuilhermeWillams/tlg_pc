@@ -45,6 +45,7 @@ mkdir -p "$dest/out" "$dest/launcher" "$dest/system_lib"
 cp -r "out/pyi-dist/$PORT_NAME/." "$dest/"
 llvm-strip -o "$dest/Play $PORT_NAME.exe" out/tlg-play.exe
 cp launcher/$PORT_ICON.ico launcher/$PORT_ICON.png "$dest/launcher/"
+cp -r launcher/assets "$dest/launcher/"
 # The executables without debug information, where tlg_run.py looks for them (out/).
 for exe in tlg-probe.exe tlg-gpu-capabilities.exe; do
     llvm-strip --strip-debug -o "$dest/out/$exe" "out/$exe"
