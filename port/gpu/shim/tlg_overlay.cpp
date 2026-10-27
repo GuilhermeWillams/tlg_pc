@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "tlg_overlay.h"
+#include "../../src/runtime_menu.h"
 
 #include <algorithm>
 #include <atomic>
@@ -15,13 +16,8 @@
 
 #include <SDL3/SDL.h>
 #include "tlg_settings.h"
-#include "tlg_orbs.h"
-#include "tlg_actors.h"
 #include "tlg_graphics.h"
 #include "tlg_perf_stats.h"
-#include "../../src/actor_hook.h"
-
-extern TlgActorSlot tlg_actor_slots[2];
 extern "C" void runtime_restart(void); // src/probe.c: starts run.py again, ends this process
 #include "common/elf_info.h"
 #include "imgui.h"
@@ -68,6 +64,7 @@ std::atomic<bool> loading{false};
 std::atomic<u32> loading_done{0}, loading_total{0};
 std::atomic<u32> background_done{0}, background_total{0};
 bool dirty = false; // settings changed while open: saved on close
+std::chrono::steady_clock::time_point aa_label_until{}; // the AA label after F8
 int requested_tab = -1; // switch on the next frame (L1/R1, Q/E, menu opened)
 // The game's text dialog (SetTextEntry), guarded by imgui_mutex.
 bool text_entry_active = false;
@@ -248,27 +245,6 @@ void ChoiceRow(const char* label, std::atomic<int>& target, const char* const* l
     ImGui::PopID();
 }
 
-// A 0.1x to 100x multiplier with a 1x button.
-void MultiplierRow(const char* label, std::atomic<float>& value, const char* help) {
-    Row(label);
-    const ImGuiStyle& style = ImGui::GetStyle();
-    ImGui::SetNextItemWidth(-(ImGui::CalcTextSize("1x").x + style.FramePadding.x * 2 + style.ItemSpacing.x));
-    float v = value;
-    if (ImGui::SliderFloat("##value", &v, 0.1f, 100.0f, "%.2fx",
-                           ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_AlwaysClamp)) {
-        value = TlgOrbs::ClampMultiplier(v);
-        dirty = true;
-    }
-    Help(help);
-    ImGui::SameLine();
-    if (ImGui::SmallButton("1x")) {
-        value = 1.0f;
-        dirty = true;
-    }
-    Help(help);
-    ImGui::PopID();
-}
-
 void InfoRow(const char* label, const char* text) {
     Row(label);
     ImGui::TextDisabled("%s", text);
@@ -370,6 +346,9 @@ void ImageTab() {
         ChoiceRow(TL("Display mode", "Modo de exibição"), s.display_mode, G::DisplayModeCount == 3 ? modes : G::DisplayModeNames.data(),
                   nullptr, G::DisplayModeCount, TL("Windowed, borderless window or exclusive fullscreen.", "Janela, janela sem borda ou tela cheia exclusiva."));
         CheckRow("VSync", s.vsync, TL("Waits for the monitor: no tearing, a little more input delay.", "Espera o monitor: sem tearing, um pouco mais de atraso de entrada."));
+        CheckRow("HDR", s.hdr,
+                 TL("The game's own HDR10 output, used when HDR is on in Windows display settings. Applies after a restart.",
+                    "A saída HDR10 do próprio jogo, usada quando o HDR está ligado nas configurações de tela do Windows. Vale após reiniciar."));
         ImGui::EndTable();
     }
     const int iw = s.image_width, ih = s.image_height, ww = s.window_width, wh = s.window_height;
@@ -405,9 +384,62 @@ void ImageTab() {
     }
     ImGui::SeparatorText(TL("Anti-aliasing", "Anti-aliasing"));
     if (BeginRows("##antialiasing")) {
+        // tlg: one row for DLAA and FSR 3.1 native AA (TlgSettings::AaMode). DLAA needs DLSS
+        // (tlg_dlss.dll, an NVIDIA RTX card); the game's own SMAA runs either way.
+        static const char* const aa_labels[TlgSettings::AaModeCount] = {
+            TL("Off", "Desligado"), "DLAA (NVIDIA DLSS)", TL("FSR 3.1 Native AA", "FSR 3.1 AA nativo")};
+        Row(TL("Anti-aliasing", "Anti-aliasing"));
+        const int aa_mode = TlgSettings::AaModeOf();
+        if (ImGui::BeginCombo("##value", aa_labels[aa_mode])) {
+            for (int i = 0; i < TlgSettings::AaModeCount; ++i) {
+                ImGui::BeginDisabled(!TlgSettings::AaModeSupported(i));
+                if (ImGui::Selectable(aa_labels[i], i == aa_mode) && i != aa_mode) {
+                    TlgSettings::SetAaMode(i);
+                    dirty = true;
+                }
+                ImGui::EndDisabled();
+            }
+            ImGui::EndCombo();
+        }
+        Help(!s.dlss_supported && aa_mode == TlgSettings::AaOff
+                 ? (s.dlss_problem.load() ? s.dlss_problem.load() : TL("DLAA needs an NVIDIA RTX card and tlg_dlss.dll; FSR 3.1 native AA runs on any card.", "O DLAA precisa de uma placa NVIDIA RTX e do tlg_dlss.dll; o FSR 3.1 AA nativo roda em qualquer placa."))
+                 : TL("Stable, smooth edges on foliage, feathers and railings, at native resolution on the game's own motion vectors. DLAA: NVIDIA DLSS (RTX cards). FSR 3.1 native AA: AMD FSR, on any card. Off: the game's own anti-aliasing only. F8 switches between off and the choice in game.",
+                      "Bordas estáveis e suaves em folhagem, penas e grades, na resolução nativa com os vetores de movimento do próprio jogo. DLAA: NVIDIA DLSS (placas RTX). FSR 3.1 AA nativo: AMD FSR, em qualquer placa. Desligado: só o anti-aliasing do jogo. F8 alterna no jogo entre desligado e a escolha."));
+        ImGui::PopID();
         CheckRow("SMAA 1x", s.smaa,
                  TL("Smooths jagged edges (feathers, grass, railings) on the final image. The game draws its HUD and subtitles into the same image, so text edges are smoothed too. About 0.2 to 0.4 ms per frame at 1080p (RTX 2060).",
                     "Suaviza o serrilhado (penas, grama, grades) na imagem final. O jogo desenha o HUD e as legendas na mesma imagem, então as bordas do texto também são suavizadas. Cerca de 0,2 a 0,4 ms por quadro em 1080p (RTX 2060)."));
+        ImGui::EndTable();
+    }
+    ImGui::SeparatorText(TL("Enhancements", "Melhorias"));
+    if (BeginRows("##enhancements")) {
+        static const char* const shadow_labels[] = {TL("Game (2048)", "Jogo (2048)"), "4096", "8192"};
+        static const int shadow_values[] = {1, 2, 4};
+        ChoiceRow(TL("Shadow resolution", "Resolução das sombras"), s.shadow_scale, shadow_labels, shadow_values, 3,
+                  TL("Draws the shadow maps at 2x or 4x the game's 2048x2048. Recommended: Game (2048). The sharper edges are hard to see, and 8192 costs about 8 FPS and about 1 GB of video memory.",
+                     "Desenha os mapas de sombra em 2x ou 4x os 2048x2048 do jogo. Recomendado: Jogo (2048). As bordas mais nítidas são difíceis de notar, e 8192 custa cerca de 8 FPS e cerca de 1 GB de memória de vídeo."));
+        ImGui::EndTable();
+    }
+    ImGui::SeparatorText(TL("Game effects (100% = as shipped)", "Efeitos do jogo (100% = original)"));
+    if (BeginRows("##effects")) {
+        SliderRow(TL("Ambient occlusion", "Oclusão de ambiente"), s.ssao, 0, 400, "%d%%",
+                  TL("Strength of the contact shadows in corners and under grass. 0% turns the pass off (saves a little GPU time). Above 150% the half-resolution AO shows blocky halos.",
+                     "Força das sombras de contato em cantos e sob a grama. 0% desliga o passe (economiza um pouco de GPU). Acima de 150% a AO em meia resolução mostra halos em blocos."));
+        SliderRow(TL("Bloom", "Bloom"), s.bloom, 0, 400, "%d%%",
+                  TL("Glow around bright light. 0% turns the pass off.", "Brilho em volta da luz forte. 0% desliga o passe."));
+        SliderRow(TL("Screen-space reflections", "Reflexos em espaço de tela"), s.ssr, 0, 400, "%d%%",
+                  TL("Reflections and light glare on water and wet stone. 0% turns the pass off.", "Reflexos e brilho de luz na água e na pedra molhada. 0% desliga o passe."));
+        SliderRow(TL("Motion blur", "Desfoque de movimento"), s.motion_blur, 0, 400, "%d%%",
+                  TL("Camera motion blur. 0% turns the pass off.", "Desfoque ao mover a câmera. 0% desliga o passe."));
+        SliderRow(TL("Chromatic aberration", "Aberração cromática"), s.chromatic, 0, 100, "%d%%",
+                  TL("Color fringes toward the screen edges. The game ships with this off: 0% is as shipped.", "Franjas de cor nas bordas da tela. O jogo vem com isto desligado: 0% é o original."));
+        SliderRow(TL("Vignette", "Vinheta"), s.vignette, 0, 100, "%d%%",
+                  TL("Darkened screen corners. The game ships with this off: 0% is as shipped.", "Cantos da tela escurecidos. O jogo vem com isto desligado: 0% é o original."));
+        SliderRow(TL("Game sharpening", "Nitidez do jogo"), s.game_sharpen, 0, 400, "%d%%",
+                  TL("The game's own sharpening filter. The difference is hard to see: 100% recommended.", "O filtro de nitidez do próprio jogo. A diferença é difícil de ver: 100% recomendado."));
+        SliderRow(TL("Character detail distance", "Distância de detalhe dos personagens"), s.lod, 25, 400, "%d%%",
+                  TL("How far the boy and Trico keep their detailed models. Higher keeps full detail further away.",
+                     "Até onde o menino e o Trico mantêm os modelos detalhados. Mais alto mantém o detalhe completo mais longe."));
         ImGui::EndTable();
     }
     ImGui::SeparatorText(TL("Color", "Cor"));
@@ -460,7 +492,7 @@ void PerformanceTab() {
         ChoiceRow(TL("Frames queued", "Quadros na fila"), s.frames_queued, queued_labels, G::FramesQueued.data(),
                   int(G::FramesQueued.size()), TL("More frames queued: steadier FPS, slower response to input.", "Mais quadros na fila: FPS mais estável, resposta mais lenta."));
         CheckRow(TL("Compile new shaders in the background", "Compilar shaders novos em segundo plano"), s.async_shaders,
-                 TL("Fewer stutters in new areas; an object or effect may appear a moment later.", "Menos engasgos em áreas novas; um objeto ou efeito pode aparecer um instante depois."));
+                 TL("Fewer stutters in new areas; an object or effect may appear a moment later, and the lighting can stay wrong (overexposed) after a load.", "Menos engasgos em áreas novas; um objeto ou efeito pode aparecer um instante depois, e a iluminação pode ficar errada (estourada) depois de um carregamento."));
         ImGui::EndTable();
     }
 }
@@ -580,7 +612,8 @@ void ControlsTab() {
 int RestartChanges() {
     const auto& s = TlgSettings::Get();
     return (s.render_resolution != s.startup_render_resolution) + (s.engine_fps != s.startup_engine_fps) +
-           (s.deferred_readback != s.startup_deferred_readback) + (s.stale_readback != s.startup_stale_readback);
+           (s.deferred_readback != s.startup_deferred_readback) + (s.stale_readback != s.startup_stale_readback) +
+           (s.hdr != s.startup_hdr);
 }
 
 void Menu() {
@@ -679,55 +712,6 @@ void Menu() {
     }
 }
 
-// Enemy health bar from the damage hook's records (tlg_actors.cpp).
-// Only the copied values are read, never the game's memory: an actor may be gone by now.
-void HealthDisplay() {
-    struct Seen {
-        uint32_t seq = 0;
-        std::chrono::steady_clock::time_point at{};
-    };
-    static Seen seen[2];
-    const auto& s = TlgSettings::Get();
-    if (!s.actor_watch_supported.load()) {
-        return;
-    }
-    const auto now = std::chrono::steady_clock::now();
-    TlgActorSlot slot[2];
-    for (int i = 0; i < 2; ++i) {
-        std::memcpy(&slot[i], const_cast<const TlgActorSlot*>(&tlg_actor_slots[i]), sizeof(slot[i]));
-        if (slot[i].seq != seen[i].seq) {
-            seen[i] = {slot[i].seq, now};
-        }
-    }
-    const auto recent = [&](int i, int seconds) {
-        return seen[i].seq != 0 && now - seen[i].at < std::chrono::seconds(seconds);
-    };
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImDrawList* draw = ImGui::GetForegroundDrawList();
-    const float scale = base_scale;
-    if (s.enemy_health_bar && recent(1, 4) && TlgActors::Valid(slot[1].health, slot[1].max_health)) {
-        // Minimal: a thin green bar centered on the screen's top edge; it shrinks toward the center
-        // so it stays symmetric, with the health in numbers below.
-        const ImVec2 display = ImGui::GetIO().DisplaySize;
-        const float width = 260.0f * scale, height = 5.0f * scale, center = display.x * 0.5f;
-        const float top = 36.0f * scale;
-        const float fraction = TlgActors::Fraction(slot[1].health, slot[1].max_health);
-        draw->AddRectFilled(ImVec2(center - width * 0.5f - scale, top - scale),
-                            ImVec2(center + width * 0.5f + scale, top + height + scale),
-                            IM_COL32(0, 0, 0, 140), 2 * scale);
-        const float half = width * 0.5f * fraction;
-        draw->AddRectFilled(ImVec2(center - half, top), ImVec2(center + half, top + height),
-                            IM_COL32(70, 190, 80, 220), 2 * scale);
-        char text[48];
-        std::snprintf(text, sizeof(text), "%.0f / %.0f", std::ceil(slot[1].health), slot[1].max_health);
-        const float font = ImGui::GetFontSize() * 0.9f;
-        const ImVec2 size = ImGui::GetFont()->CalcTextSizeA(font, FLT_MAX, 0.0f, text);
-        const ImVec2 at{center - size.x * 0.5f, top + height + 4.0f * scale};
-        draw->AddText(ImGui::GetFont(), font, ImVec2(at.x + scale, at.y + scale), IM_COL32(0, 0, 0, 160), text);
-        draw->AddText(ImGui::GetFont(), font, at, IM_COL32(225, 235, 220, 220), text);
-    }
-}
-
 // The game's text dialog: what is typed, and how to finish (keyboard or controller).
 void TextEntryBox() {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -748,7 +732,9 @@ void TextEntryBox() {
     ImGui::SetWindowFontScale(1.0f);
     ImGui::Separator();
     ImGui::TextDisabled("Keyboard: type, Backspace to erase, Enter = OK, Esc = cancel");
-    ImGui::TextDisabled("Controller: Cross (A) = OK, Circle (B) = cancel");
+    ImGui::TextDisabled("%s", menu_circle_confirm()
+        ? "Controller: Circle (B) = OK, Cross (A) = cancel"
+        : "Controller: Cross (A) = OK, Circle (B) = cancel");
     ImGui::End();
 }
 
@@ -803,8 +789,9 @@ struct SavePainter {
     void Line(float x0, float y0, float x1, float y1, u32 rgb, float thickness, float alpha = 1.0f) const {
         dl->AddLine(P(x0, y0), P(x1, y1), SaveColor(rgb, alpha), thickness * k);
     }
-    // A controller button: 0 Cross (confirm), 1 Circle (back), centred at (x, y).
+    // Semantic action: 0 confirm, 1 back; choose its physical glyph by menu policy.
     void Button(float x, float y, int which) const {
+        which ^= menu_circle_confirm();
         const ImVec2 c = P(x, y);
         dl->AddCircleFilled(c, 11.0f * k, SaveColor(kSaveThumb));
         dl->AddCircle(c, 11.0f * k, SaveColor(kSaveKnob), 0, 1.0f * k);
@@ -1313,6 +1300,7 @@ void Init(const Vulkan::Instance& instance, vk::Format format, u32 image_count) 
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr; // window positions are not kept
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+    io.ConfigNavSwapGamepadButtons = menu_circle_confirm();
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
     io.BackendPlatformName = "tlg";
 
@@ -1447,7 +1435,8 @@ bool HandleSaveEvent(const SDL_Event& event) {
         move = button == SDL_GAMEPAD_BUTTON_DPAD_UP || button == SDL_GAMEPAD_BUTTON_DPAD_LEFT ? -1
                : button == SDL_GAMEPAD_BUTTON_DPAD_DOWN || button == SDL_GAMEPAD_BUTTON_DPAD_RIGHT ? 1
                                                                                                   : 0;
-        finish = button == SDL_GAMEPAD_BUTTON_SOUTH ? 1 : button == SDL_GAMEPAD_BUTTON_EAST ? 2 : 0;
+        finish = menu_button_result(button == SDL_GAMEPAD_BUTTON_SOUTH,
+                                    button == SDL_GAMEPAD_BUTTON_EAST);
         break;
     }
     case SDL_EVENT_MOUSE_MOTION: {
@@ -1526,6 +1515,16 @@ bool HandleEvent(const SDL_Event& event) {
         }();
         if (down && !event.key.repeat && capture_key && event.key.key == SDLK_F11) {
             Vulkan::FrameCapture::Request();
+            return true;
+        }
+        // tlg: F8 switches between the anti-aliasing choice and the game's own SMAA (saved; the
+        // label shows briefly).
+        if (down && !event.key.repeat && event.key.key == SDLK_F8) {
+            auto& settings = TlgSettings::Get();
+            settings.dlaa = !settings.dlaa;
+            aa_label_until = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+            std::printf("AA: %s (F8)\n", settings.dlaa ? TlgSettings::AaModeName(TlgSettings::AaModeOf()) : "game SMAA");
+            TlgSettings::Save();
             return true;
         }
         // tlg: F10 shows or hides the performance overlay (FPS counter) at any time.
@@ -1659,14 +1658,20 @@ static bool NoticeActive() {
     return std::chrono::steady_clock::now() < notice_until;
 }
 
+/// tlg: the AA label (top right), for a moment after F8.
+bool AaLabelOn() {
+    const auto& s = TlgSettings::Get();
+    return s.upscaler == TlgSettings::UpscalerDlss &&
+           std::chrono::steady_clock::now() < aa_label_until;
+}
+
 bool Visible() {
     const auto& s = TlgSettings::Get();
     const auto now = std::chrono::steady_clock::now();
     return initialized && (loading || background_total || menu_open || text_entry_active || choice_active ||
-                           message_active || progress_on || now < progress_until || now < toast_until ||
+                           message_active || progress_on || now < progress_until || now < toast_until || AaLabelOn() ||
                            NoticeActive() ||
-                           choice_retiring || s.show_fps ||
-                           (s.actor_watch_supported && s.enemy_health_bar));
+                           choice_retiring || s.show_fps);
 }
 
 bool CapturesInput() {
@@ -1813,9 +1818,6 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
     if (TlgSettings::Get().show_fps && !menu_open) {
         FpsCounter();
     }
-    if (!loading && !menu_open) {
-        HealthDisplay();
-    }
     if (background_total && !loading && !menu_open) {
         BackgroundLoading();
     }
@@ -1827,6 +1829,20 @@ void Render(vk::CommandBuffer cmdbuf, vk::ImageView view, vk::Extent2D extent) {
     }
     if (NoticeActive() && !menu_open) {
         NoticeBox();
+    }
+    if (AaLabelOn() && !menu_open) {
+        const auto& s = TlgSettings::Get();
+        const int aa_mode = TlgSettings::AaModeOf();
+        const int mode = s.jitter && TlgSettings::AaModeSupported(aa_mode) ? aa_mode : TlgSettings::AaOff;
+        const ImVec2 size = ImGui::GetIO().DisplaySize;
+        ImGui::SetNextWindowPos({size.x - 8.0f, 8.0f}, ImGuiCond_Always, {1.0f, 0.0f});
+        ImGui::SetNextWindowBgAlpha(0.6f);
+        ImGui::Begin("##aa_label", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav);
+        ImGui::Text("AA: %s  (F8)", mode == TlgSettings::AaOff ? "game SMAA" : TlgSettings::AaModeName(mode));
+        ImGui::End();
     }
     ImGui::Render();
 

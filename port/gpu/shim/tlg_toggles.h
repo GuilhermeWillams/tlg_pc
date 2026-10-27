@@ -15,6 +15,7 @@ extern "C" __attribute__((returns_twice)) int tlg_setjmp(sigjmp_buf buffer);
 #endif
 
 extern "C" std::uint64_t runtime_disabled_optimizations;
+extern "C" std::uint64_t runtime_disabled_optimizations2;
 /// Recovery point for speculative guest memory reads on this thread (runtime_memory.c).
 extern "C" __thread sigjmp_buf* runtime_fault_recover;
 
@@ -69,10 +70,25 @@ enum : std::uint64_t {
     // when nothing moves. Static-camera flicker of railings/window bars p99.9 -45% (2026-10-03).
     TaaKeepNearerHistory = 1ull << 55,
     SceneMipBias = 1ull << 57, ///< negative LOD bias of G-buffer samplers at reduced scene sizes
+    // DLAA tests: DLSS without its automatic exposure, the game's SMAA kept under DLAA, and
+    // bits 60-63 a DLSS render preset (0: driver default; recreates the feature on change).
+    DlssAutoExposure = 1ull << 58,
+    DlaaSkipGameSmaa = 1ull << 59,
+    DlaaMotionView = 1ull << 56, ///< debug: the game motion vectors over the DLAA result
+    DlaaMotionFix = 1ull << 30, ///< replace game vectors the hair inherited from behind it
+    JitterDepthWritesOnly = 1ull << 31, ///< test: jitter only draws that write the scene depth
     // Bits 20-29 are used as raw debug toggles by the camera/object motion and the upscaler.
 };
 inline bool Disabled(std::uint64_t bit) {
     return (__atomic_load_n(&runtime_disabled_optimizations, __ATOMIC_RELAXED) & bit) != 0;
+}
+/// The second mask (second number in TLG_TOGGLE_FILE): the first one has no free bits left.
+enum : std::uint64_t {
+    ShaderCodeBacking = 1, ///< per-draw shader code reads through the backing view
+    ImageHashBacking = 32, ///< texture change hashes read through the backing view
+};
+inline bool Disabled2(std::uint64_t bit) {
+    return (__atomic_load_n(&runtime_disabled_optimizations2, __ATOMIC_RELAXED) & bit) != 0;
 }
 } // namespace TlgToggle
 

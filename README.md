@@ -2,6 +2,8 @@
 
 <h1 align="center">The Last Guardian — port nativo para PC</h1>
 
+<p align="center"><a href="https://buymeacoffee.com/hayatog"><img src="https://img.shields.io/badge/Buy_me_a_coffee-Apoie_o_projeto-FFDD00?logo=buymeacoffee&amp;logoColor=000000" alt="Apoie com um café / Buy me a coffee"></a></p>
+
 <p align="center">
   <a href="#english"><b>English below</b></a> ·
   <a href="https://github.com/HayatoG/tlg_pc/releases/latest">Download</a> ·
@@ -162,10 +164,12 @@ The screenshots and the performance chart are at the top of this page.
 - **60 FPS and unlocked frame rate (experimental):** launcher → Video → "Frame rate (experimental)", or `TLG_FPS=30|60|unlocked`. The default is still 30 FPS, as on PS4. Details in [`docs/60fps.md`](docs/60fps.md) (in Portuguese, [#5](https://github.com/HayatoG/tlg_pc/issues/5)).
 - **Image filters:** SMAA anti-aliasing, RCAS (FSR 1) or CAS (AMD) sharpening and colour adjustments (brightness, contrast, saturation, gamma), in the launcher and live in the in-game menu (Insert → Image) ([#2](https://github.com/HayatoG/tlg_pc/issues/2)).
 - **Mouse and keyboard:** the mouse turns the camera (sensitivity and inverted Y in the launcher), and keys and mouse buttons can be remapped ([#8](https://github.com/HayatoG/tlg_pc/issues/8)).
+- **Japanese text (experimental):** on EU CUSA03745 update 01.03, choose **日本語 (EU 1.03 text fallback)** in Game language. The port handles the embedded-asset fallback without moving or deleting archives. See [setup and limitations](docs/japanese.md); this is not Japanese-region disc support.
 - **Motion sensor:** the DualShock 4/DualSense gyro works as is. On controllers without one, a tap on Share (or L3+R3) toggles "sensor mode": the left stick tilts the controller and cross/A shakes it. On the keyboard, T/G tilt and Y shakes.
 - **PS4-like brightness and lighting:** the game's auto exposure now reads the right value from the GPU, so outdoor scenes no longer blow out to white (`TLG_READBACK_LINEAR=1`, on by default; `0` restores the old behaviour) ([#38](https://github.com/HayatoG/tlg_pc/issues/38), [#40](https://github.com/HayatoG/tlg_pc/issues/40)).
 - **Direct memory access (shaders):** new launcher option (Graphics → GPU), **off by default** (`TLG_DIRECT_MEMORY_ACCESS=1`). Shaders read constants straight from the game's memory: fixes some broken scenes, but the game runs slower. Its shaders live in a cache of their own and are compiled again the first time.
 - **Sticks:** a 10% dead zone against drift (`TLG_STICK_DEADZONE`), and the last controller used is the one that counts.
+- **Menu buttons:** [Cross/Circle confirmation](docs/menu-buttons.md) in launcher Controls, without swapping gameplay buttons. The game-menu conversion currently requires the verified EU 01.03 executable.
 - **Touchpad without a touchpad:** hold View/Select (or Tab) and move the right stick (or the arrow keys) to swipe; a quick tap still clicks.
 - **Performance:** FPS no longer drops over time (shader variants are now reused), and repeated partial image transitions are skipped.
 - **Automatic shader cache:** it lives in `user/cache/`, next to the saves (Linux and Windows; the old cache in `~/.local/share/shadPS4` or `user/user/` is moved over on the first start). The folder is keyed by the shader recompiler version, and the old cache is deleted on its own after an update. To rebuild everything, the launcher has a **Clear shader cache** button (or `./run_tlg.sh --clear-shader-cache`); it deletes only this game's compiled shaders, never saves or settings.
@@ -265,3 +269,9 @@ Technical notes (Ghidra findings, fixed bugs, `TLG_*` options) are in [`docs/TEC
 Code base: [gow3_pc](https://github.com/FelipePrado0/gow3_pc) (FelipePrado0), [bloodborne_pc](https://github.com/deadinside28/bloodborne_pc) and [shadPS4](https://github.com/shadps4-emu/shadPS4), all GPL-2.0, as is this project ([LICENSE](port/LICENSE)). ATRAC9 audio via [LibAtrac9](https://github.com/Thealexbarney/LibAtrac9).
 
 This project is not affiliated with Sony Interactive Entertainment, SIE Japan Studio or genDESIGN. The Last Guardian is a trademark of Sony Interactive Entertainment. No game code, files or art are distributed here. The icon is original artwork made for this project.
+
+## Apoie o desenvolvimento / Support development
+
+Se quiser apoiar os ports, [pague um café pelo Buy Me a Coffee](https://buymeacoffee.com/hayatog). O apoio é opcional; os ports continuam gratuitos.
+
+If you would like to support the ports, [buy me a coffee](https://buymeacoffee.com/hayatog). Support is optional; the ports remain free.

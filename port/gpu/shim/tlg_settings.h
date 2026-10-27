@@ -6,8 +6,6 @@
 #pragma once
 #include "tlg_perf_stats.h"
 
-#include "../../src/cheat_hook.h"
-
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -40,39 +38,46 @@ struct Values {
     std::atomic<float> reactive_scale{1.0f};
     std::atomic<float> reactive_threshold{0.2f};
     std::atomic<float> reactive_max{0.9f};
+    /// FSR 3 fVelocityFactor 0..1: how much motion cuts the history (1 = AMD's default, the
+    /// history drops to 15% from half a 4K pixel per frame; 0 keeps it while moving).
+    std::atomic<float> fsr_velocity{1.0f};
+    /// NVSDK_NGX_DLSS_Hint_Render_Preset for every DLSS mode (0 = the driver's default,
+    /// 1..15 = presets A..O, e.g. 11 = K).
+    std::atomic<int> dlss_preset{0};
     std::atomic<int> debug_view{DebugNone};
     std::atomic<bool> show_fps{false};
+    /// DLAA (NVIDIA DLSS at native size on the game's motion vectors, vk_temporal_upscaler);
+    /// off: the game's own SMAA only. F8 switches it (a label shows which one for a moment).
+    std::atomic<bool> dlaa{true};
+    /// Debug (launcher, at start; tlg_lua.cpp): the game's level select and QA menu, and the
+    /// collapsing bridge fix (skips the slow motion that can freeze the game in the pit).
+    std::atomic<bool> level_select{false}, bridge_fix{false};
+    /// Enhancements (menu, live): shadow map resolution as a multiple of the game's 2048
+    /// (1, 2 or 4; vk_scene_resolution SetShadowScale). 8192 looked barely different, ~8 FPS.
+    std::atomic<int> shadow_scale{1};
+    /// Game effects (menu, live): percent of the game's own value, written into its
+    /// post-process and camera objects through Lua (tlg_lua.cpp). 100 = as shipped.
+    std::atomic<int> bloom{100}, dof{100}, motion_blur{100}, chromatic{0}, vignette{0},
+        ssao{100}, ssr{100}, game_sharpen{100}, shadow_distance{100}, lod{100};
     /// Performance overlay (tlg_perf_stats.h): items shown, font size and background opacity
     /// in percent, corner (0 top left, 1 top right, 2 bottom left, 3 bottom right), layout
     /// (0 one line, 1 one item per line). menu_tab: the menu's last tab.
     std::atomic<unsigned> overlay_items{TlgPerfStats::DefaultItems};
     std::atomic<int> overlay_scale{100}, overlay_corner{1}, overlay_opacity{50}, overlay_layout{0};
     std::atomic<int> menu_tab{0};
-    std::atomic<float> red_orb_multiplier{1.0f};
-    std::atomic<bool> red_orbs_supported{false};
-    /// Damage and orb pickup multipliers (src/damage_hook.h, src/orb_hook.h), 0.1x to 100x.
-    /// The game's code reads these floats directly.
-    std::atomic<float> damage_dealt{1.0f}, damage_taken{1.0f};
-    std::atomic<float> green_orb_multiplier{1.0f}, blue_orb_multiplier{1.0f}, gold_orb_multiplier{1.0f};
-    std::atomic<bool> damage_supported{false}, orb_pickup_supported{false};
-    std::atomic<bool> cheats[TLG_CHEAT_COUNT]{};
-    std::atomic<uint32_t> cheats_supported{0};
-    /// Damage hook (src/actor_hook.h): enemy health bar, off by default.
-    std::atomic<bool> enemy_health_bar{false};
-    std::atomic<bool> actor_watch_supported{false};
     // Graphics (tlg_graphics.h). Live: applied on the next frame.
     std::atomic<int> display_mode{0};
     std::atomic<bool> vsync{true};
     std::atomic<int> fps_limit{0};
-    std::atomic<bool> async_shaders{true};
+    std::atomic<bool> async_shaders{false};
     std::atomic<bool> fsr1{false};
     std::atomic<bool> rcas{true};
     std::atomic<int> rcas_strength{75};
     /// Filters on the final image (postfx_pass.h, post_process.frag), all off by default:
     /// SMAA 1x, AMD CAS (replaces RCAS while on) and the color adjustments.
     std::atomic<bool> smaa{false};
-    std::atomic<bool> cas{false};
-    std::atomic<int> cas_strength{50};
+    std::atomic<bool> cas{true};
+    std::atomic<int> cas_strength{100};
     std::atomic<bool> color_adjust{false};
     std::atomic<float> brightness{0.0f}, contrast{1.0f}, saturation{1.0f}, color_gamma{1.0f};
     /// Set by the presenter: sharpening ran on the last frame (it needs FSR 1 when the game's
@@ -86,6 +91,8 @@ struct Values {
     std::atomic<int> engine_fps{120};
     std::atomic<bool> deferred_readback{true};
     std::atomic<bool> stale_readback{true};
+    /// The game's own HDR10 output (BT.2020 PQ) when Windows HDR is on (TLG_HDR overrides).
+    std::atomic<bool> hdr{true};
     /// Set before an "Apply and restart"; cleared once the new launch shows the game. run.py
     /// restores the previous startup options when a launch never cleared it.
     std::atomic<bool> restart_unconfirmed{false};
@@ -93,7 +100,7 @@ struct Values {
     /// The engine rate this launch really runs at (run.py's TLG_ENGINE_FPS): 60 when the frame
     /// rate patch does not apply to this game build.
     std::atomic<int> applied_engine_fps{120};
-    bool startup_deferred_readback = true, startup_stale_readback = true;
+    bool startup_deferred_readback = true, startup_stale_readback = true, startup_hdr = true;
     // FSR 4 checks (menu): the provider's auto exposure, the jitter sign it is given.
     std::atomic<bool> fsr4_auto_exposure{true};
     std::atomic<bool> fsr4_invert_jitter{false};
@@ -132,6 +139,8 @@ void Load();
 void ConfigureUpscalerSupport(bool fsr4, bool fsr411);
 /// After device creation: DLSS availability; a DLSS setting falls back to FSR 3.1 without it.
 void ConfigureDlssSupport(bool available, const char* problem);
+/// The selected upscaler does not work here: runs FSR 3.1, while Save keeps the selection.
+void FallBackToFsr3();
 /// Startup-patched scene dimensions cannot change until run.sh prepares a new image.
 bool FixedRenderSession();
 int RenderPreset();
@@ -148,5 +157,13 @@ void Save();
 float PresetScale(int preset);
 const char* PresetName(int preset);
 const char* UpscalerName(int upscaler);
+
+/// tlg: the anti-aliasing row (menu, launcher): one choice over dlaa + upscaler (native size).
+enum AaMode : int { AaOff = 0, AaDlaa, AaFsr3Native, AaModeCount };
+int AaModeOf();
+/// Sets dlaa and the upscaler for a mode.
+void SetAaMode(int mode);
+bool AaModeSupported(int mode);
+const char* AaModeName(int mode);
 
 } // namespace TlgSettings

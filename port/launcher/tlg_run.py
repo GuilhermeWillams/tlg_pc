@@ -17,6 +17,7 @@ import json
 import os
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 import time
@@ -32,14 +33,18 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 import mod_patches  # noqa: E402
 REPO_DIR = PORT_DIR.parent
-OUT_DIR = PORT_DIR / 'out'
-
+# Writeable dirs (out/, user/ by default): a read-only mount (the Linux AppImage, a sandboxed package) has
+# nowhere to write under PORT_DIR, so TLG_DATA_DIR moves them to a writable root; the shipped
+# binaries and libraries stay in the package (PORT_OUT_DIR).
+DATA_DIR = Path(os.environ['TLG_DATA_DIR']) if os.environ.get('TLG_DATA_DIR') else PORT_DIR
+OUT_DIR = DATA_DIR / 'out'
+PORT_OUT_DIR = PORT_DIR / 'out'
 
 def user_dir():
     """The folder of saves, tlg.ini, mods, backups and GPU caches: TLG_USER_DIR, else the per-user
     pointer file (survives reinstalling; the Qt launcher's Saves screen sets it), else
     <port folder>/user (userdata.py has the rules). Always call this instead of caching it."""
-    return userdata.user_dir(PORT_DIR)
+    return userdata.user_dir(Path(os.environ['TLG_DATA_DIR']) if os.environ.get('TLG_DATA_DIR') else PORT_DIR)
 
 
 def __getattr__(name):  # USER_DIR (the Tk launcher, older code) is the current folder
@@ -47,9 +52,8 @@ def __getattr__(name):  # USER_DIR (the Tk launcher, older code) is the current 
         return user_dir()
     raise AttributeError(name)
 
-
 LOG_DIR = OUT_DIR / 'logs'
-PROBE = OUT_DIR / ('tlg-probe.exe' if os.name == 'nt' else 'tlg-probe')
+PROBE = PORT_OUT_DIR / ('tlg-probe.exe' if os.name == 'nt' else 'tlg-probe')
 KEEP_LOGS = 30
 
 # Game language: the engine's own ids (NOT the PS4 system ones), looked up through
@@ -79,8 +83,23 @@ def default_language(game_dir=''):
     return DEFAULT_LANGUAGE_BY_TITLE.get(title, 'es_LA')
 
 
-# Every language key either disc has (the Qt launcher's names table covers them all).
-GAME_LANGUAGES = {**LANGUAGES_US, **LANGUAGES_EU, **LANGUAGES_ASIA}
+JAPANESE_FALLBACK_LABEL = '日本語 (EU 1.03 text fallback)'
+
+
+def japanese_fallback_available(game_dir):
+    """Only the verified EU 01.03 asset layout; not Japanese-region disc support."""
+    if not game_dir or shader_cache.title_id(game_dir) != 'CUSA03745':
+        return False
+    try:
+        return (mod_patches.game_app_version(game_dir) == '01.03' and
+                all((Path(game_dir) / name).is_file()
+                    for name in ('trico_boot.psarc', 'trico_bootp.psarc')))
+    except (OSError, ValueError, struct.error):
+        return False
+
+
+# 'ja' is an explicit embedded-asset fallback, not native engine language 0.
+GAME_LANGUAGES = {**LANGUAGES_US, **LANGUAGES_EU, **LANGUAGES_ASIA, 'ja': 2}
 # The closest choice when the system's language is missing from the disc.
 _LANGUAGE_SIBLING = {'pt_BR': 'pt_PT', 'pt_PT': 'pt_BR', 'es_LA': 'es_ES', 'es_ES': 'es_LA',
                      'fr_CA': 'fr', 'fr': 'fr_CA'}
@@ -121,6 +140,8 @@ def game_language_choices(settings):
     """The game language box of the Qt launcher: 'auto', the languages the disc has and the saved
     choice even when the disc lacks it (never changed behind the player's back)."""
     keys = ['auto'] + list(game_languages(settings.get('game_dir', '')))
+    if japanese_fallback_available(settings.get('game_dir', '')):
+        keys.append('ja')
     choice = settings.get('game_language', 'auto')
     return keys + [choice] if choice in GAME_LANGUAGES and choice not in keys else keys
 
@@ -130,6 +151,8 @@ def resolve_game_language(settings, environ=None):
     system (or its closest variant); anything else is English, as before."""
     table = game_languages(settings.get('game_dir', ''))
     choice = settings.get('game_language', 'auto')
+    if choice == 'ja' and japanese_fallback_available(settings.get('game_dir', '')):
+        return 'ja'
     if choice in table:
         return choice
     if choice == 'auto':
@@ -139,14 +162,29 @@ def resolve_game_language(settings, environ=None):
                 return key
     return 'en'
 
+
+def game_language_environment(settings, environ=None):
+    """Select the internal French id plus a non-destructive guest archive mask for Japanese.
+
+    Explicit engine-language overrides still win; a different override disables the mask.
+    Never inherit a stale mask from a previous launch when another language is selected.
+    """
+    environ = os.environ if environ is None else environ
+    language = resolve_game_language(settings, environ)
+    engine_id = 2 if language == 'ja' else game_languages(settings.get('game_dir')).get(language, 1)
+    selected = environ.get('TLG_LANGUAGE', str(engine_id))
+    return {'TLG_LANGUAGE': selected,
+            'TLG_JAPANESE_FALLBACK': '1' if language == 'ja' and selected == '2' else '0'}
+
+
 # TLG defaults (see README "Opções" and the reasons in each comment).
 DEFAULT_ENV = {
     'TLG_PIPELINE_BINARIES': '0',  # VK_KHR_pipeline_binary crashes on the NVIDIA 595 driver
     'TLG_READBACKS': '2',          # the game reads GPU compute results on the CPU (AsyncMap)
     'TLG_READBACK_LINEAR': '1',    # small/linear render targets back to the CPU: auto exposure (#38, #40)
     'TLG_GC_BUDGET_MB': '5600',    # texture cache budget for 6 GB of VRAM
-    'TLG_UPSCALER': 'off',         # native image: GoW3's temporal upscalers made it shake
-    'TLG_JITTER': '0',
+    # The anti-aliasing comes from tlg.ini (dlaa, upscaler: DLAA or FSR 3.1 native AA).
+    'TLG_JITTER': '1',             # jitter only while DLAA or FSR 3.1 native AA runs
     'TLG_OBJECT_MOTION': '0',
     'TLG_FRAME_STATS': '1',        # FPS in the log every 5 s (scripts/watch_session.sh heartbeat)
 }
@@ -161,6 +199,8 @@ DEFAULT_SETTINGS = {
     'show_fps': False,
     'display_mode': 'Windowed',    # Windowed | Borderless | Fullscreen (tlg.ini)
     'vsync': True,
+    'level_select': False,         # tlg.ini; tlg_lua.cpp
+    'bridge_fix': False,
     'vram_budget_mb': 5600,
     'native_audio': True,
     # Mouse and keyboard (tlg.ini; the in-game menu's Controls tab changes the mouse ones too).
@@ -168,15 +208,25 @@ DEFAULT_SETTINGS = {
     'mouse_sensitivity': 1.0,
     'mouse_invert_y': False,
     'key_map': {},                 # PS4 button -> 'Key|Mouse Left' (empty: the default)
+    'menu_confirm': 'cross',       # cross | circle; menu-only, applied on next launch
     'frame_rate': '30',            # 30 | 60 | unlocked (scripts/tlg_patches.py; TLG_FPS wins)
     'gpu_readbacks': '2',          # TLG_READBACKS: 2 precise (the game reads GPU compute results), 0 fast
     'stick_deadzone': 10,          # percent; runtime_pad.c TLG_STICK_DEADZONE
     'close_on_play': True,         # Qt launcher: close about 2 s after the game starts
     'reopen_launcher': True,       # ... and open again when the game exits
+    'resolution': '1920x1080',     # WxH (scripts/tlg_patches.py; TLG_RESOLUTION wins)
 }
 FRAME_RATES = ['30', '60', 'unlocked']
+# 16:9, then ultrawide 21:9 and super ultrawide 32:9 (Hor+ and a widened UI).
+RESOLUTIONS = ['1280x720', '1920x1080', '2560x1440', '3840x2160',
+               '2560x1080', '3440x1440', '3840x1600', '5120x2160',
+               '3840x1080', '5120x1440']
 # The frame rate mode prepare() really applied (another eboot build stays at 30).
 applied_frame_rate = '30'
+# MiB the Garlic heap patch added to the game's GPU heap (0: none); the direct memory grows with it.
+applied_garlic_extra = 0
+# The size the resolution patch really applied (None: the game's own 1920x1080).
+applied_resolution = None
 
 # Keyboard and mouse defaults of src/runtime_pad.c, in its key_map syntax ('|': several).
 DEFAULT_KEYS = {
@@ -185,7 +235,7 @@ DEFAULT_KEYS = {
     'touchpad_left': 'Tab', 'touchpad_right': 'Backspace', 'up': 'I', 'down': 'K', 'left': 'J', 'right': 'L',
 }
 # Synced with tlg.ini both ways: the in-game menu saves them there.
-INI_KEYS = ('mouse_enabled', 'mouse_sensitivity', 'mouse_invert_y', 'key_map')
+INI_KEYS = ('mouse_enabled', 'mouse_sensitivity', 'mouse_invert_y', 'key_map', 'menu_confirm')
 
 
 def key_map_spec(mapping):
@@ -239,7 +289,14 @@ def load_settings():
         pass
     if 'key_map' in ini:
         settings['key_map'] = parse_key_map(ini['key_map'])
+    if 'menu_confirm' in ini:
+        settings['menu_confirm'] = ini['menu_confirm']
     return settings
+
+
+def menu_confirm(settings):
+    value = os.environ.get('TLG_MENU_CONFIRM', settings.get('menu_confirm', 'cross'))
+    return 'circle' if value == 'circle' else 'cross'
 
 
 def save_settings(settings):
@@ -419,6 +476,19 @@ def frame_rate(settings):
     return os.environ.get('TLG_FPS') or str(settings.get('frame_rate', '30'))
 
 
+def resolution(settings):
+    """The requested render and output size "WxH": TLG_RESOLUTION, else the launcher's setting."""
+    return os.environ.get('TLG_RESOLUTION') or str(settings.get('resolution', '1920x1080'))
+
+
+def resolution_label(size):
+    """'3440x1440 (21:9)': ultrawide sizes are 64:27 (2560x1080) or 43:18 (3440x1440), sold as 21:9."""
+    width, height = (int(n) for n in size.split('x'))
+    ratio = width / height
+    name = '32:9' if ratio > 3.4 else '21:9' if ratio > 2.2 else '16:9'
+    return f'{width} × {height} ({name})'
+
+
 def mods_dir():
     """TLG_MODS_DIR, else user_dir()/mods (created empty on first use so the player sees where
     to drop shadPS4/GoldHEN cheat XML files)."""
@@ -458,7 +528,9 @@ def set_mod_enabled(key, enabled):
 def prepare(settings, log=print):
     """Builds out/boot-linked.bin, out/content.bin and out/patches.bin (frame rate patches and
     any enabled mod); returns the module list that was linked."""
-    global applied_frame_rate
+    global applied_frame_rate, applied_garlic_extra, applied_resolution
+    applied_garlic_extra = 0
+    applied_resolution = None
     game = settings['game_dir']
     scripts = PORT_DIR / 'scripts'
     modules = ['libc.prx', 'libSceFios2.prx']
@@ -470,7 +542,8 @@ def prepare(settings, log=print):
         [*python_command(scripts / 'link_modules.py'), game, '--out', str(OUT_DIR), '--modules', *modules],
         [*python_command(scripts / 'content_profile.py'), game, '--out', str(OUT_DIR)],
         [*python_command(scripts / 'tlg_patches.py'), game, '--out', str(OUT_DIR), '--mode', frame_rate(settings),
-         '--mods-dir', str(mods_dir()), '--mods-config', str(mods_config())],
+         '--mods-dir', str(mods_dir()), '--mods-config', str(mods_config()), '--resolution', resolution(settings),
+         '--menu-confirm', menu_confirm(settings)],
     ]
     for step in steps:
         result = subprocess.run(step, cwd=str(scripts), capture_output=True, text=True,
@@ -482,6 +555,11 @@ def prepare(settings, log=print):
             log(line)
             if line.startswith('Frame rate: ') and line.endswith(' patch writes'):
                 applied_frame_rate = line.split()[2]
+            if line.startswith('Patch garlic: '):
+                words = line.split()  # '... GPU heap 2816 -> N MB (bytes)'
+                applied_garlic_extra = int(words[-3]) - int(words[-5])
+            if line.startswith('Resolution patch resolution: '):
+                applied_resolution = line.split()[-2]  # '... 1920x1080 -> WxH (bytes)'
     isa_table(log)
     return modules
 
@@ -584,10 +662,10 @@ def build_env(settings, extra=None):
         env.setdefault(key, value)  # explicit TLG_* in the environment always win
     env['TLG_GC_BUDGET_MB'] = os.environ.get('TLG_GC_BUDGET_MB', str(int(settings['vram_budget_mb'])))
     env['TLG_READBACKS'] = os.environ.get('TLG_READBACKS', str(settings.get('gpu_readbacks', '2')))
+    env['TLG_MENU_CONFIRM'] = menu_confirm(settings)
     env['TLG_STICK_DEADZONE'] = os.environ.get(
         'TLG_STICK_DEADZONE', f"{int(settings.get('stick_deadzone', 10)) / 100:.2f}")
-    env['TLG_LANGUAGE'] = os.environ.get('TLG_LANGUAGE', str(
-        game_languages(settings.get('game_dir')).get(resolve_game_language(settings), 1)))
+    env.update(game_language_environment(settings))
     if settings.get('ui_language', 'auto') != 'auto':
         env['TLG_UI_LANG'] = settings['ui_language']
     # Without the console module the port's own mixer (runtime_ngs2.c) plays the audio.
@@ -604,6 +682,12 @@ def build_env(settings, extra=None):
     env['TLG_ENGINE_FPS'] = {'30': '30', '60': '60'}.get(applied_frame_rate, '240')
     if applied_frame_rate == 'unlocked':
         env.setdefault('TLG_VBLANK_HZ', '0')
+    # The larger Garlic heap comes out of direct memory (runtime_memory.c: 5056 MiB retail).
+    if applied_garlic_extra:
+        env.setdefault('TLG_DMEM_MB', str(5056 + applied_garlic_extra))
+    # The game renders natively at the patched size: the upscaler stays off (vk_temporal_upscaler).
+    if applied_resolution:
+        env['TLG_RESOLUTION_PATCH'] = applied_resolution
     restart = f'"{sys.executable}" --play' if FROZEN else f'"{sys.executable}" "{Path(__file__).resolve()}"'
     env.setdefault('TLG_RESTART_COMMAND', restart)
     # Linux package: the libraries built with the port (SDL3, FFmpeg, ...) are in out/lib, never the
@@ -737,12 +821,12 @@ def raise_open_file_limit():
         pass
 
 
-def launch(settings, seconds=0, extra_env=None, detached=False):
+def launch(settings, seconds=0, extra_env=None, detached=False, header=()):
     """Writes the in-game settings, starts the game; returns (process, log path).
-    detached=False (Tk launcher, command line): the process's combined output is a text pipe; the
-    caller copies it to the log. detached=True (Qt launcher): the game writes straight into the log
-    file and runs in its own session, so closing the launcher never reaches it; follow the file with
-    logtail.LogTail and wait() for the exit code."""
+    The game always writes straight into the log file (after the header lines): a pipe that only
+    the launcher reads stalls the game once its buffer fills and the launcher is gone. Follow the
+    file with logtail.LogTail and wait() for the exit code. detached=True (Qt launcher): the game
+    also runs in its own session, so closing the launcher never reaches it."""
     data = user_dir()
     data.mkdir(parents=True, exist_ok=True)
     key_map = settings.get('key_map') or {}
@@ -750,9 +834,12 @@ def launch(settings, seconds=0, extra_env=None, detached=False):
         'display_mode': str(settings['display_mode']).lower(),  # the game's keys: windowed|borderless|fullscreen
         'vsync': int(bool(settings['vsync'])),
         'show_fps': int(bool(settings['show_fps'])),
+        'level_select': int(bool(settings.get('level_select', False))),
+        'bridge_fix': int(bool(settings.get('bridge_fix', False))),
         'mouse_enabled': int(bool(settings.get('mouse_enabled', True))),
         'mouse_sensitivity': f"{float(settings.get('mouse_sensitivity', 1.0)):.2f}",
         'mouse_invert_y': int(bool(settings.get('mouse_invert_y', False))),
+        'menu_confirm': settings.get('menu_confirm', 'cross'),
         'key_map': key_map_spec(key_map) if isinstance(key_map, dict) else str(key_map),
     })
     log = new_log()
@@ -769,15 +856,12 @@ def launch(settings, seconds=0, extra_env=None, detached=False):
     if ISA_TABLE.is_file():
         cmd += ['--isa-rewrite', str(ISA_TABLE)]
     raise_open_file_limit()
-    if detached:
-        with open(log, 'wb') as out:   # the child keeps its own copy of the descriptor
-            process = subprocess.Popen(cmd, cwd=str(data), env=build_env(settings, extra_env),
-                                       stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
-                                       **detach_options())
-        return process, log
-    process = subprocess.Popen(cmd, cwd=str(data), env=build_env(settings, extra_env),
-                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-                               encoding='utf-8', errors='replace', bufsize=1)
+    with open(log, 'wb') as out:   # the child keeps its own copy of the descriptor
+        out.write(''.join(line + '\n' for line in header).encode('utf-8'))
+        out.flush()
+        process = subprocess.Popen(cmd, cwd=str(data), env=build_env(settings, extra_env),
+                                   stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                                   **(detach_options() if detached else {}))
     return process, log
 
 
@@ -804,17 +888,19 @@ def main(argv=None):
         return 1
     notes = []
     prepare(settings, log=lambda line: notes.append(line) if line.startswith('Frame rate') else None)
-    process, log = launch(settings, seconds)
+    process, log = launch(settings, seconds, header=notes)
     print(f'Rodando (log: {log})', flush=True)
-    with open(log, 'w', encoding='utf-8') as out:
-        for line in notes:
-            print(line, flush=True)
-            out.write(line + '\n')
-        for line in process.stdout:
-            sys.stdout.write(line)
-            out.write(line)
-            out.flush()
-    return process.wait()
+    tail = logtail.LogTail(log)
+    while True:   # echo only: the game never waits for this loop or the console
+        done = process.poll() is not None
+        try:
+            for line in tail.poll(final=done):
+                print(line, flush=True)
+        except (OSError, ValueError):
+            pass
+        if done:
+            return process.returncode
+        time.sleep(0.2)
 
 
 if __name__ == '__main__':

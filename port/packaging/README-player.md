@@ -40,7 +40,9 @@ Tudo vem do **seu** PS4 (GoldHEN + Itemzflow). Nada disso vai no download. Use *
 3. Abra **The Last Guardian** (`The Last Guardian.exe` no Windows): é o launcher novo (Qt), com telas de Gráficos, Controles, Correções, Saves, Mods, Suporte e Atualizações. O launcher antigo continua ao lado como **The Last Guardian (classic)**. Por padrão o launcher fecha quando o jogo abre e volta quando o jogo fecha (dá para mudar em Gráficos → Áudio e launcher).
    - No Windows, se aparecer "O Windows protegeu o computador", clique em *Mais informações* e depois em *Executar assim mesmo*. O programa não é assinado digitalmente.
 4. Em **Pasta do jogo**, escolha a pasta que tem o `eboot.bin`.
-5. Escolha o idioma do jogo (inglês, português, espanhol ou francês) e clique em **Jogar**. A primeira partida demora um pouco mais.
+5. Escolha um dos idiomas oferecidos para sua pasta do jogo e clique em **Jogar**. A primeira partida demora um pouco mais.
+
+**Texto japonês experimental (EU 01.03):** com CUSA03745 e a atualização 01.03 aplicada na mesma pasta, escolha **日本語 (EU 1.03 text fallback)**. Não mova nem apague os arquivos franceses: o port os oculta apenas da visão do jogo nesta execução. Para voltar ao francês, escolha Français e inicie novamente. É necessário um launcher e runtime que incluam esse recurso; isso não adiciona suporte ao executável da edição japonesa do disco. Menus e dicas de jogo em japonês foram verificados; áudio/texto do jogo inteiro ainda não foram testados. Os botões de controle não são trocados.
 
 No Linux, `./install_desktop.sh` adiciona o jogo ao menu de aplicativos.
 
@@ -48,6 +50,7 @@ No Linux, `./install_desktop.sh` adiciona o jogo ao menu de aplicativos.
 
 - **F10**: liga e desliga o contador de FPS
 - **Insert** (ou R3 + L2 no controle): abre o menu do port (imagem, desempenho, overlay)
+- **F8**: alterna entre o DLAA e o anti-aliasing do próprio jogo (Windows, NVIDIA RTX). O DLAA (NVIDIA DLSS na resolução nativa) deixa a folhagem e as bordas finas estáveis; vem ligado e pode ser desligado no launcher ou em Imagem › Anti-aliasing no menu do port. Em outras placas a opção fica desativada.
 - Controles de PS4/PS5, Xbox e 8BitDo funcionam via SDL3, por USB ou Bluetooth.
 
 ### Teclado e mouse
@@ -118,7 +121,9 @@ Everything comes from **your own** PS4 (GoldHEN + Itemzflow). None of it is in t
 3. Open **The Last Guardian** (`The Last Guardian.exe` on Windows): the new (Qt) launcher, with Graphics, Controls, Fixes, Saves, Mods, Support and Updates screens. The old launcher is still next to it as **The Last Guardian (classic)**. By default the launcher closes when the game starts and comes back when the game closes (change it in Graphics → Audio and launcher).
    - On Windows, if "Windows protected your PC" appears, click *More info*, then *Run anyway*. The program is not digitally signed.
 4. Under **Game folder**, choose the folder that has `eboot.bin`.
-5. Pick the game language (English, Portuguese, Spanish or French) and click **Play**. The first start takes a little longer.
+5. Pick one of the languages offered for your game folder and click **Play**. The first start takes a little longer.
+
+**Experimental Japanese text (EU 01.03):** with CUSA03745 and update 01.03 applied to the same folder, select **日本語 (EU 1.03 text fallback)**. Do not move or delete the French archives: the port hides them only from the game's view for that launch. To return to French, select Français and launch again. Both launcher and runtime must contain this feature; it does not add Japanese-region disc executable support. Japanese menus and gameplay prompts were verified, not full-game audio/text coverage. Controller buttons are not swapped.
 
 On Linux, `./install_desktop.sh` adds the game to the applications menu.
 
@@ -126,6 +131,7 @@ On Linux, `./install_desktop.sh` adds the game to the applications menu.
 
 - **F10**: toggles the FPS counter
 - **Insert** (or R3 + L2 on a controller): opens the port's menu (image, performance, overlay)
+- **F8**: switches between DLAA and the game's own anti-aliasing (Windows, NVIDIA RTX). DLAA (NVIDIA DLSS at native resolution) keeps foliage and thin edges stable; it is on by default and can be turned off in the launcher or under Image › Anti-aliasing in the port's menu. On other graphics cards the setting is greyed out.
 - PS4/PS5, Xbox and 8BitDo controllers work through SDL3, over USB or Bluetooth.
 
 ### Keyboard and mouse
@@ -165,3 +171,12 @@ While the game window has focus, it takes the mouse and the mouse turns the came
 ---
 
 This project is not affiliated with Sony Interactive Entertainment, SIE Japan Studio or genDESIGN. The Last Guardian is a trademark of Sony Interactive Entertainment. / Este projeto não tem vínculo com a Sony Interactive Entertainment, SIE Japan Studio ou genDESIGN.
+
+## Apoie o desenvolvimento / Support development
+
+☕ [Apoie com um café / Buy me a coffee](https://buymeacoffee.com/hayatog)
+
+Apoio opcional para continuar desenvolvendo os ports. Os ports continuam gratuitos.
+Optional support for continued port development. The ports remain free.
+
+The Windows package contains NVIDIA DLSS (`out/nvngx_dlss.dll`) under NVIDIA's license (`out/NVIDIA-DLSS-LICENSE.txt`). NVIDIA, RTX and DLSS are trademarks of NVIDIA Corporation. / O pacote Windows contém o NVIDIA DLSS (`out/nvngx_dlss.dll`) sob a licença da NVIDIA (`out/NVIDIA-DLSS-LICENSE.txt`). NVIDIA, RTX e DLSS são marcas da NVIDIA Corporation.

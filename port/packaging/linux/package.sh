@@ -33,6 +33,7 @@ rm -rf -- out/stage
 mkdir -p "$dest/out/gpu" "$dest/out/lib" "$dest/launcher" "$dest/system_lib"
 cp -r "out/pyi-dist/$PORT_NAME/." "$dest/"
 cp launcher/$PORT_ICON.png "$dest/launcher/"
+cp -r launcher/assets "$dest/launcher/"
 strip --strip-debug -o "$dest/out/tlg-probe" out/tlg-probe
 strip --strip-debug -o "$dest/out/gpu/libtlggpu.so" out/gpu/libtlggpu.so
 [[ -f out/tlg-gpu-capabilities ]] && strip -o "$dest/out/tlg-gpu-capabilities" out/tlg-gpu-capabilities

@@ -45,6 +45,7 @@ mkdir -p "$dest/out" "$dest/launcher" "$dest/system_lib"
 cp -r "out/pyi-dist/$PORT_NAME/." "$dest/"
 llvm-strip -o "$dest/Play $PORT_NAME.exe" out/tlg-play.exe
 cp launcher/$PORT_ICON.ico launcher/$PORT_ICON.png "$dest/launcher/"
+cp -r launcher/assets "$dest/launcher/"
 # The executables without debug information, where tlg_run.py looks for them (out/).
 for exe in tlg-probe.exe tlg-gpu-capabilities.exe; do
     llvm-strip --strip-debug -o "$dest/out/$exe" "out/$exe"
@@ -70,6 +71,18 @@ while ((${#queue[@]})); do
     done < <(llvm-readobj --coff-imports "$binary" | awk '$1 == "Name:" && tolower($2) ~ /\.dll$/ {print $2}')
 done
 echo "Packaged $(find "$dest/out" -maxdepth 1 -iname '*.dll' | wc -l) DLLs from /clang64/bin"
+# DLAA (optional): the MSVC bridge and NVIDIA's runtime from build_dlss.sh, with NVIDIA's license
+# (the DLSS SDK license allows shipping nvngx_dlss.dll inside an application). Without them the
+# DLAA setting is greyed out and the game keeps its own anti-aliasing.
+if [[ -f out/tlg_dlss.dll && -f out/nvngx_dlss.dll && -f out/NVIDIA-DLSS-LICENSE.txt ]]; then
+    cp out/tlg_dlss.dll out/nvngx_dlss.dll out/NVIDIA-DLSS-LICENSE.txt "$dest/out/"
+    echo "Packaged DLSS: tlg_dlss.dll, nvngx_dlss.dll"
+elif [[ -n ${TLG_REQUIRE_DLSS:-} ]]; then
+    echo 'TLG_REQUIRE_DLSS is set but out/tlg_dlss.dll or out/nvngx_dlss.dll is missing: run build_dlss.sh' >&2
+    exit 1
+else
+    echo 'No DLSS bridge in out/ (build_dlss.sh not run): packaging without DLAA'
+fi
 cp -r scripts "$dest/"
 find "$dest" -name __pycache__ -prune -exec rm -r {} +
 cp LICENSE packaging/README-player.md "$dest/"
