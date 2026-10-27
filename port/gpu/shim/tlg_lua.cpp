@@ -144,6 +144,83 @@ void Dump(const char* buffer, uint64_t size, const char* name) {
     std::ofstream(std::string(dir) + "/" + std::to_string(count++) + "_" + file, std::ios::binary)
         .write(buffer, static_cast<std::streamsize>(size));
 }
+
+// Debug menus (setting level_select): the GoldHEN "Level Select + QA Menu" patch by illusiony
+// and DanielSvoboda, applied to the source. Startup gets the QA menu (in game: hold L1, press
+// L3); the title menu's press-build level select is enabled (hold L1 as the menu closes).
+// The game is paused while the QA menu is open. The menu also closes itself when a stage is
+// picked, so its Hide resumes: paused, the new stage's fade-in (a game-time delay) never came.
+constexpr std::string_view QaMenu = R"(
+if not _TLGQA then _TLGQA=true
+local function Registered(f) for _,v in ipairs(tick_funcs) do if v==f then return true end end return false end
+RegisterTick(function()
+  if MS.PadGetHold(PadButton.L1) and MS.PadGetDown(PadButton.L3) then
+    if Registered(ControllerMenu.Tick) then
+      if ControllerMenu.Hide then ControllerMenu.Hide() end
+    else _TLGQA_UNLOAD=true DelayExec(function() RegisterTick(ControllerMenu.Tick) end) luaCommand("trico pause") end
+  end
+end)
+Load("game/scripts/_editor/ControllerMenu")
+local hide = ControllerMenu.Hide
+ControllerMenu.Hide = function() hide() luaCommand("trico resume") end
+end
+)";
+
+/// Edits game chunk `name` for the debug menus and the bridge fix; true when it changed.
+bool GameEdits(std::string& patched, std::string_view name) {
+    const auto& s = TlgSettings::Get();
+    if (s.level_select && name == "data_trico/game/scripts/startup.lua") {
+        patched += QaMenu;
+        return true;
+    }
+    if (s.level_select && name == "data_trico/game/scripts/common/GameSetupTbl.lua") {
+        // A stage started from the QA menu is loaded on top of the current one (StartStage
+        // unloads nothing), so each switch held two stages and ran the GPU heap out of memory.
+        // Do what the game's own restart does: disconnect the stage's regions, preload the new
+        // ones, then unload what is still disconnected. The common regions stay.
+        static constexpr std::string_view Blocker = "self.timeBlocker = CreateTimeBlocker()";
+        static constexpr std::string_view Preloaded =
+            "DelayExec( function() self:Start_Stage_2nd_PreloadWait(area) end )";
+        const size_t blocker = patched.find(Blocker);
+        const size_t preloaded = patched.find(Preloaded);
+        if (blocker == std::string::npos || preloaded == std::string::npos || preloaded < blocker) {
+            return false;
+        }
+        patched.insert(preloaded, "if _TLGQA_UNLOAD then _TLGQA_UNLOAD = nil RegionController.UnloadAll_IfDisconnect() end ");
+        patched.insert(blocker + Blocker.size(),
+                       " if _TLGQA_UNLOAD then for _, v in ipairs(Class('Region')) do"
+                       " if OBJ[v].status ~= 'None' and not string.find(v, 'RG_common') then"
+                       " RegionController.Disconnect(OBJ[v].regionName) end end"
+                       " self:Disconnect_CommonRegion() end");
+        return true;
+    }
+    if (s.level_select && name == "data_trico/game/scripts/stages/s01_Opening/missionScript.lua") {
+        // Only the test guarding the L1 level select, not the press build's other changes.
+        static constexpr std::string_view Test = "if gameConfig_buildId_Press==true then";
+        static constexpr std::string_view Hold = "if MS.PadGetHold(PadButton.L1) then";
+        for (size_t at = patched.find(Test); at != std::string::npos;
+             at = patched.find(Test, at + 1)) {
+            const size_t next = patched.find_first_not_of(" \t\r\n", at + Test.size());
+            if (next != std::string::npos && patched.compare(next, Hold.size(), Hold) == 0) {
+                patched.replace(at, Test.size(), "if true then");
+                return true;
+            }
+        }
+        return false;
+    }
+    // Bridge fix (setting bridge_fix): the GoldHEN "Collapsing Bridge Freeze Fix". The slow
+    // motion while the bridge in the pit collapses can leave the game frozen; skip it.
+    static constexpr std::string_view SlowMotion = "MS.SetGameSpeed(0.10, 0.2)";
+    if (s.bridge_fix && name == "data_trico/game/scripts/stages/s10_Pit/missionScript.lua") {
+        const size_t at = patched.find(SlowMotion);
+        if (at == std::string::npos) {
+            return false;
+        }
+        patched.insert(at, "--");
+        return true;
+    }
+    return false;
+}
 } // namespace
 
 extern "C" void tlg_lua_status(uintptr_t loadbuffer) {
@@ -165,12 +242,18 @@ extern "C" __attribute__((sysv_abi)) int tlg_lua_load(void* L, void* options, co
     }
     Dump(buffer, size, name);
     static constexpr std::string_view Marker = "function RegisterTick(";
-    if (std::string_view(buffer, size).find(Marker) != std::string_view::npos) {
-        std::string patched(buffer, size);
+    std::string patched(buffer, size);
+    bool changed = false;
+    if (patched.find(Marker) != std::string::npos) {
         patched += Bootstrap;
         std::printf("Lua: settings tick added to %s\n", name ? name : "?");
-        std::fflush(stdout);
-        return original(L, options, patched.data(), patched.size(), name);
+        changed = true;
     }
-    return original(L, options, buffer, size, name);
+    if (name && GameEdits(patched, name)) {
+        std::printf("Lua: edited %s\n", name);
+        changed = true;
+    }
+    std::fflush(stdout);
+    return changed ? original(L, options, patched.data(), patched.size(), name)
+                   : original(L, options, buffer, size, name);
 }
