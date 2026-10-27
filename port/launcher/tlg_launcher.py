@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+import webbrowser
 from tkinter import font as tkfont
 from tkinter import filedialog, messagebox, ttk
 
@@ -414,7 +415,7 @@ class Launcher:
         credits.pack(side='right')
         ttk.Label(credits, text=self.t('port_by'), style='Muted.TLabel').pack(anchor='e')
         self.coffee_button = tk.Button(credits, text='☕  ' + self.t('coffee'),
-                                       command=lambda: tlg_run.open_external(COFFEE_URL),
+                                       command=lambda: webbrowser.open(COFFEE_URL),
                                        background='#FFDD00', foreground='#000000',
                                        activebackground='#FFE873', activeforeground='#000000',
                                        font=(self.sans, 9, 'bold'), cursor='hand2',
@@ -427,7 +428,7 @@ class Launcher:
             link = ttk.Label(links, text=self.t(key), foreground=self.colors['accent'],
                              cursor='hand2', font=(self.sans, 9))
             link.pack(side='left', padx=(16 if index else 0, 0))
-            link.bind('<Button-1>', lambda _, u=url: tlg_run.open_external(u))
+            link.bind('<Button-1>', lambda _, u=url: webbrowser.open(u))
         ttk.Separator(main).pack(fill='x', padx=28)
         navigation = ttk.Frame(main, padding=(28, 10))
         navigation.pack(fill='x')
@@ -487,15 +488,15 @@ class Launcher:
             row=6, column=0, columnspan=2, sticky='w', pady=(8, 0))
         self.combo(video, 7, 'resolution', tlg_run.RESOLUTIONS, tlg_run.resolution_label)
         ttk.Label(video, text=self.t('resolution_hint'), style='Card.TLabel',
-                  foreground=self.colors['muted'], wraplength=420, justify='left').grid(
+                  foreground=self.colors['muted'], wraplength=360, justify='left').grid(
             row=8, column=0, columnspan=2, sticky='w', pady=(8, 0))
-        filters = self.card(image, self.t('image'), 0, 1)
+        filters = self.card(image, self.t('image'), 1, 0, span=2)
         self.build_filters(filters, 0)
-        debug = self.card(image, self.t('debug'), 1, 0, span=2)
+        debug = self.card(image, self.t('debug'), 2, 0, span=2)
         self.check(debug, 0, 'level_select')
         self.check(debug, 1, 'bridge_fix')
         ttk.Label(debug, text=self.t('debug_hint'), style='Card.TLabel',
-                  foreground=self.colors['muted'], wraplength=760, justify='left').grid(
+                  foreground=self.colors['muted'], wraplength=560, justify='left').grid(
             row=2, column=0, columnspan=3, sticky='w', pady=(10, 0))
 
         control_page = self.settings_page('controls', 'controls_hint')

@@ -33,21 +33,18 @@ PORT_DIR = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).r
 sys.path.insert(0, str(PORT_DIR / 'scripts'))
 import mod_patches  # noqa: E402
 REPO_DIR = PORT_DIR.parent
-# Writeable dirs (out/, user/): a read-only mount (the Linux AppImage, a sandboxed package) has
+# Writeable dirs (out/, user/ by default): a read-only mount (the Linux AppImage, a sandboxed package) has
 # nowhere to write under PORT_DIR, so TLG_DATA_DIR moves them to a writable root; the shipped
 # binaries and libraries stay in the package (PORT_OUT_DIR).
 DATA_DIR = Path(os.environ['TLG_DATA_DIR']) if os.environ.get('TLG_DATA_DIR') else PORT_DIR
 OUT_DIR = DATA_DIR / 'out'
-USER_DIR = DATA_DIR / 'user'
 PORT_OUT_DIR = PORT_DIR / 'out'
-MODS_DIR = USER_DIR / 'mods'          # shadPS4/GoldHEN cheat XML files the player drops in
-MODS_CONFIG = USER_DIR / 'mods.json'  # {"enabled": [...], "disabled": [...]}
 
 def user_dir():
     """The folder of saves, tlg.ini, mods, backups and GPU caches: TLG_USER_DIR, else the per-user
     pointer file (survives reinstalling; the Qt launcher's Saves screen sets it), else
     <port folder>/user (userdata.py has the rules). Always call this instead of caching it."""
-    return userdata.user_dir(PORT_DIR)
+    return userdata.user_dir(Path(os.environ['TLG_DATA_DIR']) if os.environ.get('TLG_DATA_DIR') else PORT_DIR)
 
 
 def __getattr__(name):  # USER_DIR (the Tk launcher, older code) is the current folder

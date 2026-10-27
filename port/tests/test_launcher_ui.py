@@ -85,7 +85,8 @@ class LauncherUITest(unittest.TestCase):
 
     def test_all_settings_remain_available_and_existing_callbacks_save(self):
         expected = {'game_dir', 'system_lib_dir', 'native_audio', 'vsync', 'show_fps',
-                    'vram_budget_mb', 'mouse_enabled', 'mouse_invert_y', 'mouse_sensitivity'}
+                    'vram_budget_mb', 'mouse_enabled', 'mouse_invert_y', 'mouse_sensitivity',
+                    'level_select', 'bridge_fix'}
         self.assertEqual(set(self.app.vars), expected)
         self.assertEqual(set(self.app.ini_vars), set(ui.INI_DEFAULTS) - {'rcas', 'cas'})
         self.app.vars['vram_budget_mb'].set(7000)
@@ -133,7 +134,7 @@ class LauncherUITest(unittest.TestCase):
                 else:
                     encode = lambda values: Counter(json.dumps(value, sort_keys=True) for value in values)
                     self.assertFalse(encode(expected) - encode(actual[key]))
-        self.assertEqual(len(actual['buttons']) - len(baseline['buttons']), 5)  # New navigation only.
+        self.assertEqual(len(actual['buttons']) - len(baseline['buttons']), 6)  # New navigation and the graphics button.
 
     def test_text_contrast_in_normal_focus_selection_and_disabled_states(self):
         style = ui.ttk.Style(self.root)
@@ -251,9 +252,10 @@ class LauncherUITest(unittest.TestCase):
 
     def test_play_button_preparation_launch_log_completion_and_error(self):
         process = mock.Mock()
-        process.stdout = ['Trico session output\n']
+        process.poll.return_value = 0   # the game writes its own log file; the launcher follows it
         process.wait.return_value = 0
         logfile = self.user / 'session.log'
+        logfile.write_text('Trico session output\n', encoding='utf-8')
         with mock.patch.object(ui.threading, 'Thread') as thread, \
                 mock.patch.object(ui.tlg_run, 'prepare') as prepare, \
                 mock.patch.object(ui.tlg_run, 'launch', return_value=(process, logfile)) as launch:
@@ -264,7 +266,7 @@ class LauncherUITest(unittest.TestCase):
             thread.call_args.kwargs['target']()  # Execute only the mocked game services.
             self.app.pump()
             prepare.assert_called_once()
-            launch.assert_called_once_with(self.app.settings)
+            launch.assert_called_once_with(self.app.settings, header=mock.ANY)
             self.assertIn('Trico session output', logfile.read_text(encoding='utf-8'))
             self.assertIn(self.app.t('ended', code=0), self.app.log.get('1.0', 'end'))
             self.assertFalse(self.app.play_button.instate(['disabled']))
@@ -303,7 +305,8 @@ class LauncherUITest(unittest.TestCase):
         with mock.patch.object(ui.tlg_run, 'game_languages', return_value=ui.tlg_run.LANGUAGES_EU):
             self.app.refresh_language_choices()
             self.assertEqual(list(self.app.game_lang_box.cget('values')),
-                             [ui.GAME_LANGUAGE_NAMES[key] for key in ui.tlg_run.LANGUAGES_EU])
+                             [ui.GAME_LANGUAGE_NAMES[key] for key in ui.tlg_run.game_language_choices(self.app.settings)
+                              if key != 'auto'])
             index = list(ui.tlg_run.LANGUAGES_EU).index('pt_PT')
             self.app.game_lang_box.current(index)
             self.app.game_lang_box.event_generate('<<ComboboxSelected>>')
