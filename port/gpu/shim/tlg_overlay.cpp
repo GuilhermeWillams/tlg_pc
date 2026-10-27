@@ -460,7 +460,7 @@ void PerformanceTab() {
         ChoiceRow(TL("Frames queued", "Quadros na fila"), s.frames_queued, queued_labels, G::FramesQueued.data(),
                   int(G::FramesQueued.size()), TL("More frames queued: steadier FPS, slower response to input.", "Mais quadros na fila: FPS mais estável, resposta mais lenta."));
         CheckRow(TL("Compile new shaders in the background", "Compilar shaders novos em segundo plano"), s.async_shaders,
-                 TL("Fewer stutters in new areas; an object or effect may appear a moment later.", "Menos engasgos em áreas novas; um objeto ou efeito pode aparecer um instante depois."));
+                 TL("Fewer stutters in new areas; an object or effect may appear a moment later, and the lighting can stay wrong (overexposed) after a load.", "Menos engasgos em áreas novas; um objeto ou efeito pode aparecer um instante depois, e a iluminação pode ficar errada (estourada) depois de um carregamento."));
         ImGui::EndTable();
     }
 }
